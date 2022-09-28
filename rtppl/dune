@@ -1,0 +1,4 @@
+(library
+ (name rtppl)
+ (public_name rtppl)
+ (foreign_stubs (language c) (names smemio smemio-stubs)))
