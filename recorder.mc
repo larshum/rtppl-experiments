@@ -3,20 +3,21 @@ include "common.mc"
 include "option.mc"
 include "string.mc"
 
--- Loop construct that repeatedly calls a function f until the accumulated
--- optional value turns out to be None ().
-recursive let loopFn : all a. (a -> Option a) -> a -> a =
+-- Loop construct that repeatedly calls a function f while passing along an
+-- accumulated value.
+recursive let loopFn : all a. (a -> a) -> a -> a =
   lam f. lam v.
-  match f v with Some vnext then
-    loopFn f vnext
-  else v
+  let vnext = f v in
+  loopFn f vnext
 end
 
 let ts2string : TimeStampedValue -> String = lam ts.
-  strJoin " " (map float2string ts)
+  join [int2string ts.0, " ", float2string ts.1]
 
-let parseTs : String -> TimeStampedValue = lam s.
-  map string2float (strSplit " " s)
+let parseTs : String -> TimeStampedValue = lam line.
+  match strSplit " " line with [ts, value] then
+    (ts, value)
+  else error "Invalid format of time-stamped value"
 
 -- A memory buffer used to store time stamped values
 type Buffer = {id : String, data : Ref [TimeStampedValue]}
@@ -43,9 +44,8 @@ mexpr
 
 let options = {isRecording = true} in
 
-let buffers = {f1 = emptyBuffer "fs1", f2 = emptyBuffer "fs2"} in
+let buffers = {f1 = emptyBuffer "front-sensor-1", f2 = emptyBuffer "front-sensor-2"} in
 
--- For the moment, we always record data
 let updateBuffersIfRecording = lam f1. lam f2.
   if options.isRecording then
     addBuffer buffers.f1 f1;
@@ -53,23 +53,20 @@ let updateBuffersIfRecording = lam f1. lam f2.
   else ()
 in
 
-let saveBuffersIfRecording = lam.
-  if options.isRecording then
+-- Capture signal 2 (SIGINT) to write buffer to file before terminating, if we
+-- are recording.
+let saveBuffersAndExit : Signal -> () = lam.
+  (if options.isRecording then
     saveBuffer buffers.f1;
     saveBuffer buffers.f2
-  else ()
+  else ());
+  exit 0
 in
+setSignalHandler 2 saveBuffersAndExit;
 
-let openFdExn = lam s.
-  let fd = openFd s in
-  if eqi fd (negi 1) then
-    error (join ["Could not get file descriptor of ", s])
-  else fd
-in
-
--- Open channels for reading data from the front sensors
-let front1 = openFdExn "front-sensor-1" in
-let front2 = openFdExn "front-sensor-2" in
+-- TODO: get these definitions from a generated header-file
+let front1 = 0 in
+let front2 = 1 in
 
 -- Open channel for writing the distance estimation
 -- let dist = openFdExn "estimate-distance" in
@@ -88,12 +85,8 @@ loopFn (lam d.
   -- TODO: use a proper sdelay implementation
   sleepMs 20;
 
-  let tsv1 = readFd front1 2 in
-  let tsv2 = readFd front2 2 in
-
-  -- Stop the loop if we read incomplete data.
-  if or (neqi (length tsv1) 2) (neqi (length tsv2) 2) then None ()
-  else
+  let tsv1 = lvRead front1 in
+  let tsv2 = lvRead front2 in
 
   updateBuffersIfRecording tsv1 tsv2;
 
@@ -108,7 +101,5 @@ loopFn (lam d.
   --let tsv = [ts1, d] in
   --writeFd dist td;
 
-  Some d
-) prior;
-
-saveBuffersIfRecording ()
+  d
+) prior

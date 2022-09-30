@@ -10,4 +10,4 @@ recorder: recorder.mc
 	mi compile $^
 
 clean:
-	rm -f trace-fs*.txt producer recorder
+	rm -f trace-*.txt producer recorder
