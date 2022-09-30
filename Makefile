@@ -1,3 +1,5 @@
+CC=gcc-12
+
 default: producer recorder
 	./producer& sleep 0.1 && ./recorder
 
@@ -8,4 +10,4 @@ recorder: recorder.mc
 	mi compile $^
 
 clean:
-	rm trace-fs*.txt producer recorder
+	rm -f trace-fs*.txt producer recorder
