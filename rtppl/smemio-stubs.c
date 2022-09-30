@@ -7,45 +7,22 @@
 
 #include "smemio.h" // shared memory definitions file
 
-value open_sm_stub(value str) {
-  CAMLparam1(str);
-  const char *c = (const char*)String_val(str);
-  int fd = open_sm(c);
-  CAMLreturn(Val_int(fd));
+value lv_read_stub(value port) {
+  CAMLparam1(port);
+  CAMLlocal1(tsv);
+  long long timestamp;
+  double val;
+  lv_read(port, &timestamp, &val);
+  tsv = caml_alloc(2, 0);
+  Store_field(tsv, 0, Val_int(timestamp));
+  Store_field(tsv, 1, caml_copy_double(val));
+  CAMLreturn(tsv);
 }
 
-value read_sm_stub(value ocaml_fd, value payload_length) {
-  CAMLparam2(ocaml_fd, payload_length);
-  CAMLlocal1(payload);
-
-  int fd = Int_val(ocaml_fd);
-  int n = Int_val(payload_length);
-  int sz = n * sizeof(double);
-  double *buffer = (double*)malloc(sz);
-
-  int nread = read_sm(fd, buffer, n);
-  int nelems = nread / sizeof(double);
-  payload = caml_alloc(nelems, Double_array_tag);
-  for (int i = 0; i < nelems; i++) {
-    Store_double_field(payload, i, buffer[i]);
-  }
-  free(buffer);
-
-  CAMLreturn(payload);
-}
-
-void write_sm_stub(value fd, value payload) {
-  CAMLparam2(fd, payload);
-
-  int n = Wosize_val(payload);
-  int sz = n * sizeof(double);
-  double *buffer = (double*)malloc(sz);
-  for (int i = 0; i < n; i++) {
-    buffer[i] = Double_field(payload, i);
-  }
-
-  write_sm(fd, buffer, sz);
-  free(buffer);
-
+void lv_write_stub(value port, value tsv) {
+  CAMLparam2(port, tsv);
+  long long timestamp = Int_val(Field(tsv, 0));
+  double val = Double_val(Field(tsv, 1));
+  lv_write(port, timestamp, val);
   CAMLreturn0;
 }

@@ -1,3 +1,10 @@
-external open_fd : string -> int = "open_sm_stub"
-external read_fd : int -> int -> float array = "read_sm_stub"
-external write_fd : int -> float array -> unit = "write_sm_stub"
+type port = int
+type time_stamped_value = int * float
+
+external lv_read : port -> time_stamped_value = "lv_read_stub"
+external lv_write : port -> time_stamped_value -> unit = "lv_write_stub"
+
+type signal = int
+
+let set_signal_handler (x : signal) (f : signal -> unit) : unit =
+  Sys.set_signal x (Sys.Signal_handle f)
