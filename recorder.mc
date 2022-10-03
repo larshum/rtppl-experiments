@@ -2,6 +2,7 @@ include "ext/rtppl-ext.mc"
 include "common.mc"
 include "option.mc"
 include "string.mc"
+include "sm_conf.mc"
 
 -- Loop construct that repeatedly calls a function f while passing along an
 -- accumulated value.
