@@ -1,4 +1,6 @@
 (library
  (name rtppl)
  (public_name rtppl)
- (foreign_stubs (language c) (names shared_mem shared_mem_conf smemio-stubs)))
+ (foreign_stubs
+  (language c)
+  (names shared_mem shared_mem_conf smemio-stubs rt-stubs)))

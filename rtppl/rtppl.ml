@@ -8,3 +8,6 @@ type signal = int
 
 let set_signal_handler (x : signal) (f : signal -> unit) : unit =
   Sys.set_signal x (Sys.Signal_handle f)
+
+external clock_get_time : unit -> int * int = "clock_get_time_stub"
+external clock_nanosleep : int * int -> unit = "clock_nanosleep_stub"
