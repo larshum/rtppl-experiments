@@ -65,7 +65,7 @@ in
 setSignalHandler 2 saveBuffersAndExit;
 
 -- TODO: get these definitions from a generated header-file
-let front1 = 0 in
+let front1 = distanceFrontLeft in
 
 -- Open channel for writing the distance estimation
 -- let dist = openFdExn "estimate-distance" in
