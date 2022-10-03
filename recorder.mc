@@ -47,10 +47,9 @@ let options = {isRecording = true} in
 
 let buffers = {f1 = emptyBuffer "front-sensor-1", f2 = emptyBuffer "front-sensor-2"} in
 
-let updateBuffersIfRecording = lam f1. lam f2.
+let updateBuffersIfRecording = lam f1.
   if options.isRecording then
-    addBuffer buffers.f1 f1;
-    addBuffer buffers.f2 f2
+    addBuffer buffers.f1 f1
   else ()
 in
 
@@ -67,7 +66,6 @@ setSignalHandler 2 saveBuffersAndExit;
 
 -- TODO: get these definitions from a generated header-file
 let front1 = 0 in
-let front2 = 1 in
 
 -- Open channel for writing the distance estimation
 -- let dist = openFdExn "estimate-distance" in
@@ -87,14 +85,13 @@ loopFn (lam d.
   sleepMs 20;
 
   let tsv1 = lvRead front1 in
-  let tsv2 = lvRead front2 in
 
-  updateBuffersIfRecording tsv1 tsv2;
+  updateBuffersIfRecording tsv1;
 
   -- TODO: PPL model, sampling a new value d from posterior
   /-let d = infer (lam.
-    observe f1;
-    observe f2;
+      observe f1;
+      observe f2;
     assume (Dist ?) d
   )-/
 
