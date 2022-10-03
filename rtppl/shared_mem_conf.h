@@ -19,7 +19,7 @@
  * Type to represent one sensor value sample
  */
 typedef struct{
-  int64 ts;   // timestamp of this data value in ms
+  long long ts;   // timestamp of this data value in ms
   double val;  // value of the sensor (unit depends on sensor)
 } sensor_val_t;
 
@@ -45,9 +45,5 @@ extern shared_mem_t sm_regs[];
  * Number of shared memory objects configured.
  */
 #define SM_OBJECT_COUNT 8
-
-void lv_read(int, long long*, double*);
-
-void lv_write(int, long long, double);
 
 #endif //SHARED_MEM_CONF_H_
