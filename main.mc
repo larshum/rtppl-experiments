@@ -52,6 +52,7 @@ let ast = parseMCoreFile args f in
 let ast = makeKeywords [] ast in
 
 let ast = symbolize ast in
+let ast = replaceSdelay ast in
 let ast = typeCheck ast in
 
 -- TODO: always enable/disable tests, or control via option?

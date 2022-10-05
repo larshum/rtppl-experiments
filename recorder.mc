@@ -81,8 +81,8 @@ let prior = () in
 -- iteration.
 loopFn (lam d.
 
-  -- TODO: use a proper sdelay implementation
-  sleepMs 20;
+  -- TODO: use the overrun to make decisions about what to do next
+  let ovr = sdelay 20 in
 
   let tsv1 = lvRead front1 in
 
