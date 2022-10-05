@@ -2,4 +2,4 @@
 (using ctypes 0.1)
 
 (package
- (name rtppl))
+ (name rtppl-support))
