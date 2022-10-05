@@ -9,67 +9,18 @@ include "mexpr/utesttrans.mc"
 include "ocaml/mcore.mc"
 
 include "../coreppl/src/parser.mc"
+include "rtppl.mc"
 
-lang SDelay = Ast + PrettyPrint + Eq + Sym + TypeCheck + ANF + TypeLift
-  syn Expr =
-  | TmSdelay {mills : Int, ty : Type, info : Info}
-
-  sem infoTm =
-  | TmSdelay t -> t.info
-
-  sem tyTm =
-  | TmSdelay t -> t.ty
-
-  sem withInfo info =
-  | TmSdelay t -> TmSdelay {t with info = info}
-
-  sem withTy ty =
-  | TmSdelay t -> TmSdelay {t with ty = ty}
-
-  sem smapAccumL_Expr_Expr f acc =
-  | TmSdelay t -> (acc, TmSdelay t)
-
-  sem isAtomic =
-  | TmSdelay _ -> true
-
-  sem pprintCode indent env =
-  | TmSdelay t ->
-    (env, join ["sdelay ", int2string t.millis])
-
-  sem eqExprH env free lhs =
-  | TmSdelay r ->
-    match lhs with TmSdelay l then
-      if eqi l.millis r.mills then Some free
-      else None ()
-    else None ()
-
-  sem symbolizeExpr env =
-  | TmSdelay t -> TmSdelay t
-
-  sem typeCheckExpr env =
-  | TmSdelay t ->
-    let tyunit = TyRecord {fields = mapEmpty cmpSID, info = t.info} in
-    TmSdelay {t with ty = tyunit}
-
-  sem normalize k =
-  | TmSdelay t -> TmSdelay t
-
-  sem typeLiftExpr env =
-  | TmSdelay t -> (env, TmSdelay t)
-end
-
-lang RTPPLAst = SDelay
-  
-end
-
-lang RTPPL =
-  RTPPLAst + BootParser + MExprSym + MExprTypeCheck +
-  MExprRemoveTypeAscription + MExprUtestTrans
+lang RTPPLCompile =
+  RTPPL + BootParser + MExprSym + MExprTypeCheck +
+  MExprRemoveTypeAscription + MExprUtestTrans + MCoreCompileLang
 end
 
 mexpr
 
-use RTPPL in
+use RTPPLCompile in
+
+let rtpplKeywords = ["sdelay"] in
 
 -- NOTE: this and the function below are taken from 'mi-lite.mc'. These should
 -- probably be placed in a file in the standard library, and also they should
@@ -95,7 +46,10 @@ in
 
 -- TODO: use argument parser to customize parsing etc
 let f = get argv 1 in
-let ast = parseMCoreFile defaultBootParserParseMCoreFileArg f in
+-- TODO: include DPPL keywords
+let args = {defaultBootParserParseMCoreFileArg with keywords = rtpplKeywords} in
+let ast = parseMCoreFile args f in
+let ast = makeKeywords [] ast in
 
 let ast = symbolize ast in
 let ast = typeCheck ast in
