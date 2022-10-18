@@ -3,32 +3,34 @@ include "common.mc"
 include "map.mc"
 include "option.mc"
 include "string.mc"
+include "ext/file-ext.mc"
 
 include "argparse.mc"
 include "sm_conf.mc"
 
--- TODO: How do we generalize these in case the time-stamped values can have
--- different types?
-let parseTsv = lam s.
-  match strSplit " " s with [ts, val] then
-    (string2int ts, string2float val)
-  else error "Invalid format of timestamp value"
+type Buffer = [TimeStampedValue]
 
-let tsvToString = lam tsv.
-  join [int2string tsv.0, " ", float2string tsv.1]
+type BufferState = {
+  mode : Mode,
+  buffers : Map Int Buffer,
+  inputs : [Int],
+  outputs : [Int]
+}
 
 let _bufferFile = lam id. join ["trace-", int2string id, ".txt"]
 
 let _initBuffer = lam. toList []
 
 let _loadBuffer = lam id.
-  let s = readFile (_bufferFile id) in
-  let data = map parseTsv (strSplit "\n" s) in
-  toList data
+  match readOpen (_bufferFile id) with Some bufFile then
+    let data : [TimeStampedValue] = unsafeCoerce (readBinary bufFile) in
+    toList data
+  else error (join ["Could not open buffer file ", _bufferFile id, " for reading"])
 
 let _saveBuffer = lam id. lam tsvs.
-  let s = strJoin "\n" (map tsvToString tsvs) in
-  writeFile (_bufferFile id) s
+  match writeOpen (_bufferFile id) with Some bufFile then
+    writeBinary bufFile tsvs
+  else error (join ["Could not open buffer file ", _bufferFile id, " for writing"])
 
 lang RTPPLBuffers
   syn Mode =
@@ -42,15 +44,6 @@ lang RTPPLBuffers
     if options.recording then Record ()
     else if options.replaying then Replay ()
     else Default ()
-
-  type Buffer = [TimeStampedValue]
-
-  type BufferState = {
-    mode : Mode,
-    buffers : Map Int Buffer,
-    inputs : [Int],
-    outputs : [Int]
-  }
 
   sem loadInputBuffer : Map Int Buffer -> Int -> Mode -> Map Int Buffer
   sem loadInputBuffer buffers id =
@@ -103,26 +96,12 @@ lang RTPPLBuffers
     (state, tsv)
   | Replay _ -> popBuffer id state
 
-  sem readData : BufferState -> (BufferState, [TimeStampedValue])
-  sem readData =
-  | state ->
-    mapAccumL
-      (lam state. lam inputId. readInputBuffer inputId state state.mode)
-      state state.inputs
-
   sem writeOutputBuffer : Int -> TimeStampedValue -> BufferState -> Mode -> BufferState
   sem writeOutputBuffer id tsv state =
   | Default _ | Replay _ -> lvWrite id tsv; state
   | Record _ ->
     lvWrite id tsv;
     pushBuffer id state tsv
-
-  sem writeData : BufferState -> [(Int, TimeStampedValue)] -> BufferState
-  sem writeData state =
-  | outputData ->
-    foldl
-      (lam state. lam data. writeOutputBuffer data.0 data.1 state state.mode)
-      state outputData
 
   sem saveBuffersAndExit : all a. BufferState -> a
   sem saveBuffersAndExit =
@@ -142,28 +121,38 @@ end
 -- reference, so that we can use it in a signal handler function.
 let _bufferState = ref (None ())
 
-let _getState = lam.
+let _getState : () -> BufferState = lam.
   match deref _bufferState with Some state then
     state
   else error "Buffer state error"
 
-let init = lam options. lam inputs. lam outputs.
+let initBuffers = lam options. lam inputs. lam outputs.
   use RTPPLBuffers in
   let state = init options inputs outputs in
   modref _bufferState (Some state);
   state
 
-let readData = lam.
+let readData = lam id.
   use RTPPLBuffers in
   let state = _getState () in
-  match readData state with (state, tsvs) in
+  match readInputBuffer id state state.mode with (state, tsv) in
   modref _bufferState (Some state);
-  tsvs
+  tsv
 
-let writeData = lam outputData.
+let readFloatData : Int -> (Int, Float) = lam id.
+  use RTPPLBuffers in
+  match readData id with (ts, value) in
+  (ts, unsafeCoerce value)
+
+let readDistData : Int -> (Int, Dist Float) = lam id.
+  use RTPPLBuffers in
+  match readData id with (ts, value) in
+  (ts, unsafeCoerce value)
+
+let writeData : all a. Int -> (Int, a) -> () = lam id. lam outputData.
   use RTPPLBuffers in
   let state = _getState () in
-  let state = writeData state outputData in
+  let state = writeOutputBuffer id (unsafeCoerce outputData) state state.mode in
   modref _bufferState (Some state);
   ()
 
@@ -174,5 +163,5 @@ let saveBuffersAndExit : Signal -> () = lam.
   else exit 0
 
 -- Sets the above function to be called on the SIGINT signal.
-let _dummy = setSignalHandler 2 saveBuffersAndExit
+let __ignored = setSignalHandler 2 saveBuffersAndExit
 
