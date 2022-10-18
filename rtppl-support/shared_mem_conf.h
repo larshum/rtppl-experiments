@@ -20,7 +20,7 @@
  */
 typedef struct{
   long long ts;   // timestamp of this data value in ms
-  double val;  // value of the sensor (unit depends on sensor)
+  void *val;  // value of the sensor (unit depends on sensor)
 } sensor_val_t;
 
 /**
@@ -40,10 +40,11 @@ extern shared_mem_t sm_regs[];
 #define DISTANCE_SIDE_RIGHT   (&sm_regs[5])
 #define SPEED_VAL_LEFT        (&sm_regs[6])
 #define SPEED_VAL_RIGHT       (&sm_regs[7])
+#define OBS_DISTANCE_FRONT    (&sm_regs[8])
 
 /**
  * Number of shared memory objects configured.
  */
-#define SM_OBJECT_COUNT 8
+#define SM_OBJECT_COUNT 9
 
 #endif //SHARED_MEM_CONF_H_

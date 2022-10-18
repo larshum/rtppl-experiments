@@ -21,35 +21,39 @@
 shared_mem_t sm_regs[] = {
   {
     .name = "DistanceFrontLeft",
-    .size = sizeof(sensor_val_t),
+    .size = 1 << 16,
     .mgmt = NULL
   },{
     .name = "DistanceFrontRight",
-    .size = sizeof(sensor_val_t),
+    .size = 1 << 16,
     .mgmt = NULL
   },{
     .name = "DistanceBackLeft",
-    .size = sizeof(sensor_val_t),
+    .size = 1 << 16,
     .mgmt = NULL
   },{
     .name = "DistanceBackRight",
-    .size = sizeof(sensor_val_t),
+    .size = 1 << 16,
     .mgmt = NULL
   },{
     .name = "DistanceSideLeft",
-    .size = sizeof(sensor_val_t),
+    .size = 1 << 16,
     .mgmt = NULL
   },{
     .name = "DistanceSideRight",
-    .size = sizeof(sensor_val_t),
+    .size = 1 << 16,
     .mgmt = NULL
   },{
     .name = "SpeedWheelLeft",
-    .size = sizeof(sensor_val_t),
+    .size = 1 << 16,
     .mgmt = NULL
   },{
     .name = "SpeedWheelRight",
-    .size = sizeof(sensor_val_t),
+    .size = 1 << 16,
+    .mgmt = NULL
+  },{
+    .name = "ObservedDistanceFront",
+    .size = 1 << 16,
     .mgmt = NULL
   }
 };
