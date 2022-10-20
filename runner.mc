@@ -33,7 +33,7 @@ else if neqi options.printDist (negi 1) then
   let buf = _loadBuffer options.printDist in
   let printTsv = lam tsv.
     match tsv with (ts, dist) in
-    print (concat (int2string ts) " ");
+    printLn (int2string ts);
     printRes float2string (unsafeCoerce dist)
   in
   iter printTsv buf;
@@ -86,7 +86,7 @@ loopFn (Uniform 0.0 4.0) (lam i. lam prior.
     let robs = median (deref rightDists) in
     modref rightDists [];
 
-    let posterior = infer (BPF {particles = 100}) (lam. distanceModel prior lobs robs) in
+    let posterior = infer (BPF {particles = 1000}) (lam. distanceModel prior lobs robs) in
 
     match (lobs, robs) with ((ts1, _), (ts2, _)) in
     let ts = mini ts1 ts2 in
