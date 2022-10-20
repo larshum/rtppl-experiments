@@ -1,9 +1,9 @@
+include "ext/file-ext.mc"
 include "ext/rtppl-ext.mc"
 include "common.mc"
 include "map.mc"
 include "option.mc"
 include "string.mc"
-include "ext/file-ext.mc"
 
 include "argparse.mc"
 include "sm_conf.mc"
@@ -29,7 +29,7 @@ let _loadBuffer = lam id.
 
 let _saveBuffer = lam id. lam tsvs.
   match writeOpen (_bufferFile id) with Some bufFile then
-    writeBinary bufFile tsvs
+    writeBinary bufFile (reverse tsvs)
   else error (join ["Could not open buffer file ", _bufferFile id, " for writing"])
 
 lang RTPPLBuffers
@@ -98,9 +98,11 @@ lang RTPPLBuffers
 
   sem writeOutputBuffer : Int -> TimeStampedValue -> BufferState -> Mode -> BufferState
   sem writeOutputBuffer id tsv state =
-  | Default _ | Replay _ -> lvWrite id tsv; state
+  | Default _ -> lvWrite id tsv; state
   | Record _ ->
     lvWrite id tsv;
+    pushBuffer id state tsv
+  | Replay _ ->
     pushBuffer id state tsv
 
   sem saveBuffersAndExit : all a. BufferState -> a
@@ -109,8 +111,19 @@ lang RTPPLBuffers
 
   sem saveBuffers : BufferState -> Mode -> ()
   sem saveBuffers state =
-  | Default _ | Replay _ -> ()
-  | Record _ -> mapMapWithKey saveBuffer state.buffers ; ()
+  | Default _ -> ()
+  | Replay _ ->
+    -- When replaying, we store the values in the output buffers but leave the
+    -- input buffers the way they were before.
+    let saveBufferH = lam id.
+      match mapLookup id state.buffers with Some buf then
+        saveBuffer id buf
+      else error (join ["Output buffer with id ", int2string id, " not found"])
+    in
+    iter saveBufferH state.outputs
+  | Record _ ->
+    -- When recording, we store both inputs and output buffer data.
+    mapMapWithKey saveBuffer state.buffers ; ()
 
   sem saveBuffer : Int -> [TimeStampedValue] -> ()
   sem saveBuffer id =

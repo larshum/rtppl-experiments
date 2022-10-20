@@ -13,11 +13,32 @@ let loopFn : all a. a -> (Int -> a -> a) -> a = lam v. lam f.
     let vnext = f i v in
     work (addi i 1) vnext
   in
-  work 0 v
+  work 1 v
 
 mexpr
 
 let options = parseOptions (tail argv) in
+
+-- Prints the contents of buffers by (unsafely) assuming the types of the
+-- values they contain.
+if neqi options.printFloat (negi 1) then
+  let buf = _loadBuffer options.printFloat in
+  let printTsv = lam tsv.
+    match tsv with (ts, value) in
+    join [int2string ts, " ", float2string (unsafeCoerce value)]
+  in
+  printLn (strJoin "\n" (map printTsv buf));
+  exit 0
+else if neqi options.printDist (negi 1) then
+  let buf = _loadBuffer options.printDist in
+  let printTsv = lam tsv.
+    match tsv with (ts, dist) in
+    print (concat (int2string ts) " ");
+    printRes float2string (unsafeCoerce dist)
+  in
+  iter printTsv buf;
+  exit 0
+else
 
 -- User has to declare the input and output sensors explicitly.
 let inputs = [distanceFrontLeft, distanceFrontRight] in
@@ -45,8 +66,8 @@ let median : [(Int, Float)] -> (Int, Float) = lam obs.
     get obs (divi n 2)
 in
 
-let leftDists = ref [] in
-let rightDists = ref [] in
+let leftDists = ref (toList []) in
+let rightDists = ref (toList []) in
 
 loopFn (Uniform 0.0 4.0) (lam i. lam prior.
   sleepMs 100;
@@ -54,17 +75,18 @@ loopFn (Uniform 0.0 4.0) (lam i. lam prior.
   let frontLeft = readFloatData distanceFrontLeft in
   let frontRight = readFloatData distanceFrontRight in
 
-  modref leftDists (snoc (tail (deref leftDists)) frontLeft);
-  modref rightDists (snoc (tail (deref rightDists)) frontRight);
+  modref leftDists (snoc (deref leftDists) frontLeft);
+  modref rightDists (snoc (deref rightDists) frontRight);
 
-  -- Only run the model once per second
+  -- Only run the model once every 10 iterations, using the values seen since
+  -- the last inference to base the observations on.
   if eqi (modi i 10) 0 then
     let lobs = median (deref leftDists) in
     modref leftDists [];
     let robs = median (deref rightDists) in
     modref rightDists [];
 
-    let posterior = infer (Importance {particles = 1000}) (lam. distanceModel prior lobs robs) in
+    let posterior = infer (BPF {particles = 100}) (lam. distanceModel prior lobs robs) in
 
     match (lobs, robs) with ((ts1, _), (ts2, _)) in
     let ts = mini ts1 ts2 in

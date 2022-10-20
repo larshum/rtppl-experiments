@@ -1,11 +1,4 @@
 -- Example model for the front distance estimation.
---
--- We assume the distance can be anywhere between 0 and 4 meters. The input
--- signals come from two separate sensors, with different properties.
---
--- The first sensor is accurate on short range, but loses precision when the
--- distance is above 2 meters. The second tensor is less accurate overall, but
--- can measure up to 4 meters.
 
 include "math.mc"
 
