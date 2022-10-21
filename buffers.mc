@@ -36,25 +36,29 @@ lang RTPPLBuffers
   syn Mode =
   | Default ()
   | Record ()
+  | RecordBufferOnly ()
   | Replay ()
 
   sem selectMode : Options -> Mode
   sem selectMode =
   | options ->
-    if options.recording then Record ()
+    if options.recording then
+      if options.recordBufferOnly then RecordBufferOnly ()
+      else Record ()
     else if options.replaying then Replay ()
     else Default ()
 
   sem loadInputBuffer : Map Int Buffer -> Int -> Mode -> Map Int Buffer
   sem loadInputBuffer buffers id =
   | Default _ -> buffers
-  | Record _ -> mapInsert id (_initBuffer ()) buffers
+  | Record _ | RecordBufferOnly _ -> mapInsert id (_initBuffer ()) buffers
   | Replay _ -> mapInsert id (_loadBuffer id) buffers
 
   sem loadOutputBuffer : Map Int Buffer -> Int -> Mode -> Map Int Buffer
   sem loadOutputBuffer buffers id =
   | Default _ -> buffers
-  | Record _ | Replay _ -> mapInsert id (_initBuffer ()) buffers
+  | Record _ | RecordBufferOnly _ | Replay _ ->
+    mapInsert id (_initBuffer ()) buffers
 
   sem init : Options -> [Int] -> [Int] -> BufferState
   sem init options inputs =
@@ -95,6 +99,8 @@ lang RTPPLBuffers
     let state = pushBuffer id state tsv in
     (state, tsv)
   | Replay _ -> popBuffer id state
+  | RecordBufferOnly _ ->
+    error "Cannot read data when recording in buffer-only mode"
 
   sem writeOutputBuffer : Int -> TimeStampedValue -> BufferState -> Mode -> BufferState
   sem writeOutputBuffer id tsv state =
@@ -102,7 +108,7 @@ lang RTPPLBuffers
   | Record _ ->
     lvWrite id tsv;
     pushBuffer id state tsv
-  | Replay _ ->
+  | RecordBufferOnly _ | Replay _ ->
     pushBuffer id state tsv
 
   sem saveBuffersAndExit : all a. BufferState -> a
@@ -121,7 +127,7 @@ lang RTPPLBuffers
       else error (join ["Output buffer with id ", int2string id, " not found"])
     in
     iter saveBufferH state.outputs
-  | Record _ ->
+  | Record _ | RecordBufferOnly _ ->
     -- When recording, we store both inputs and output buffer data.
     mapMapWithKey saveBuffer state.buffers ; ()
 

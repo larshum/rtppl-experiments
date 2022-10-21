@@ -15,8 +15,6 @@ let distanceModel : Dist Float -> (Int, Float) -> (Int, Float) -> Float =
 
   (if or (ltf distance 0.0) (gtf distance maxDist) then
     weight (negf inf)
-  else if gtf distance 2.0 then
-    observe ldist (Gaussian distance 0.01)
   else
     observe ldist (Gaussian distance 0.01);
     observe rdist (Gaussian distance 0.01));

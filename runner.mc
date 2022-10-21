@@ -82,9 +82,9 @@ loopFn (Uniform 0.0 4.0) (lam i. lam prior.
   -- the last inference to base the observations on.
   if eqi (modi i 10) 0 then
     let lobs = median (deref leftDists) in
-    modref leftDists [];
+    modref leftDists (toList []);
     let robs = median (deref rightDists) in
-    modref rightDists [];
+    modref rightDists (toList []);
 
     let posterior = infer (BPF {particles = 1000}) (lam. distanceModel prior lobs robs) in
 

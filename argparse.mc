@@ -5,14 +5,16 @@ type Options = {
   printFloat : Int,
   printDist : Int,
   recording : Bool,
-  replaying : Bool
+  replaying : Bool,
+  recordBufferOnly : Bool
 }
 
 let optionsDefault = {
   printFloat = negi 1,
   printDist = negi 1,
   recording = false,
-  replaying = false
+  replaying = false,
+  recordBufferOnly = false
 }
 
 let recordMsg = join [
@@ -26,9 +28,14 @@ let replayMsg = join [
   "is taken from files produced when recording."
 ]
 
-let printFloatMsg = join [ "Prints the contents of a buffer containing floats." ]
+let printFloatMsg = "Prints the contents of a buffer containing floats."
 
-let printDistMsg = join [ "Prints the contents of a buffer containing a distribution of floats." ]
+let printDistMsg = "Prints the contents of a buffer containing a distribution of floats."
+
+let recordBufferOnlyMsg = join [
+  "Configures the recording mode so that it only writes to buffers. ",
+  "This is useful when producing synthetic data."
+]
 
 let optionsConfig : ParseConfig Options = [
   ( [("--record", "", "")]
@@ -42,7 +49,10 @@ let optionsConfig : ParseConfig Options = [
   , lam p : ArgPart Options. {p.options with printFloat = string2int (argToString p)} ),
   ( [("--print-dist", " ", "<index>")]
   , printDistMsg
-  , lam p : ArgPart Options. {p.options with printDist = string2int (argToString p)} )
+  , lam p : ArgPart Options. {p.options with printDist = string2int (argToString p)} ),
+  ( [("--record-buffer-only", "", "")]
+  , recordBufferOnlyMsg
+  , lam p : ArgPart Options. {p.options with recordBufferOnly = true} )
 ]
 
 let parseOptions : [String] -> Options = lam args.
