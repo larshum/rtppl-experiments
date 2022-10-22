@@ -34,14 +34,20 @@ else if neqi options.printDist (negi 1) then
   let printTsv = lam tsv.
     match tsv with (ts, dist) in
     printLn (int2string ts);
-    printRes float2string (unsafeCoerce dist)
+    match distEmpiricalSamples (unsafeCoerce dist) with (samples, weights) in
+    recursive let work = lam samples. lam weights.
+      match (samples, weights) with ([s] ++ samples, [w] ++ weights) then
+        printLn (join [float2string s, " ", float2string w]);
+        work samples weights
+      else ()
+    in work samples weights
   in
   iter printTsv buf;
   exit 0
 else
 
 -- User has to declare the input and output sensors explicitly.
-let inputs = [distanceFrontLeft, distanceFrontRight] in
+let inputs = [distanceFrontLeft, distanceFrontRight, speedValLeft, speedValRight] in
 let outputs = [obsDistanceFront] in
 initBuffers options inputs outputs;
 
@@ -68,28 +74,52 @@ in
 
 let leftDists = ref (toList []) in
 let rightDists = ref (toList []) in
+let leftSpeeds = ref (toList []) in
+let rightSpeeds = ref (toList []) in
+let lastTs = ref (None ()) in
 
 loopFn (Uniform 0.0 4.0) (lam i. lam prior.
-  sleepMs 100;
+  -- Skip the delay if we are in replay mode, when we're debugging the code.
+  (if options.replaying then ()
+  else sleepMs 100);
 
   let frontLeft = readFloatData distanceFrontLeft in
   let frontRight = readFloatData distanceFrontRight in
+  let speedLeft = readFloatData speedValLeft in
+  let speedRight = readFloatData speedValRight in
 
   modref leftDists (snoc (deref leftDists) frontLeft);
   modref rightDists (snoc (deref rightDists) frontRight);
+  modref leftSpeeds (snoc (deref leftSpeeds) speedLeft);
+  modref rightSpeeds (snoc (deref rightSpeeds) speedRight);
 
   -- Only run the model once every 10 iterations, using the values seen since
   -- the last inference to base the observations on.
   if eqi (modi i 10) 0 then
-    let lobs = median (deref leftDists) in
+
+    let ld = median (deref leftDists) in
     modref leftDists (toList []);
-    let robs = median (deref rightDists) in
+    let rd = median (deref rightDists) in
     modref rightDists (toList []);
+    let ls = median (deref leftSpeeds) in
+    modref leftSpeeds (toList []);
+    let rs = median (deref rightSpeeds) in
+    modref rightSpeeds (toList []);
 
-    let posterior = infer (BPF {particles = 1000}) (lam. distanceModel prior lobs robs) in
+    let timestamps = map (lam x. x.0) [ld, rd, ls, rs] in
+    let ts = foldl mini (head timestamps) (tail timestamps) in
 
-    match (lobs, robs) with ((ts1, _), (ts2, _)) in
-    let ts = mini ts1 ts2 in
+    -- Time since the last timestamp in seconds
+    let deltaTime =
+      optionMap
+        (lam lastTs. divf (int2float (subi ts lastTs)) 1000.0)
+        (deref lastTs) in
+    modref lastTs (Some ts);
+
+    let speed = divf (addf ls.1 rs.1) 2.0 in
+
+    let posterior = infer (BPF {particles = 1000}) (lam. distanceModel prior deltaTime ld rd speed) in
+
     writeData obsDistanceFront (ts, posterior);
 
     posterior
