@@ -26,10 +26,14 @@ let distanceModel : Dist Float -> Option Float -> (Int, Float) -> (Int, Float)
     observe ldist (Gaussian distance 0.01);
     observe rdist (Gaussian distance 0.01);
 
-    -- Transition model
+    -- Transition model. This step only applies when we have made a previous
+    -- estimation, so that we know how much time has passed since then.
     match deltaT with Some dt then
-      let distancePrime = addf distance (mulf (negf speedMs) dt) in
-      observe distancePrime (Gaussian distance 0.01);
-      distancePrime
+      -- Compute the new distance by multiplying the estimated speed with the
+      -- delta time.
+      let newDistance = addf distance (mulf (negf speedMs) dt) in
+
+      observe newDistance (Gaussian distance 0.01);
+      newDistance
     else
       distance
