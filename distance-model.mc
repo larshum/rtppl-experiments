@@ -32,8 +32,6 @@ let distanceModel : Dist Float -> Option Float -> (Int, Float) -> (Int, Float)
       -- Compute the new distance by multiplying the estimated speed with the
       -- delta time.
       let newDistance = addf distance (mulf (negf speedMs) dt) in
-
-      observe newDistance (Gaussian distance 0.01);
-      newDistance
+      assume (Gaussian newDistance 0.01)
     else
       distance
