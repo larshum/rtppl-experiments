@@ -10,11 +10,10 @@ let outputs = [distanceFrontLeft, distanceFrontRight, speedValLeft, speedValRigh
 initBuffers options inputs outputs;
 
 -- Number of time steps
-let n = 1000 in
+let n = 100 in
 
--- Speed is -(0.8 / 100) m/s, with some small variation
--- TODO: produce the number of rotations per seconds (wheel circumference is
--- ≈35cm)
+-- Speed is -(0.8 / 10) m/s, with some small variation
+-- Output as the number of rotations per seconds (wheel circumference is ≈35cm)
 let speedMsMu = negf (divf 0.8 (int2float (divi n 10))) in
 let speedRotMu = divf speedMsMu 0.35 in
 let distMuRef = ref 0.2 in
@@ -33,14 +32,14 @@ loop n (lam i.
   let distLeft = gaussianSample distMu 0.02 in
   let distRight = gaussianSample distMu 0.02 in
 
-  let speedLeft = gaussianSample speedRotMu 0.001 in
-  let speedRight = gaussianSample speedRotMu 0.001 in
+  let speedLeft = gaussianSample speedRotMu 0.01 in
+  let speedRight = gaussianSample speedRotMu 0.01 in
 
   writeData distanceFrontLeft (ts, distLeft);
   writeData distanceFrontRight (ts, distRight);
   writeData speedValLeft (ts, speedLeft);
-  writeData speedValRight (ts, speedRight);
-  printLn (join [int2string ts, " ", float2string distMu])
+  writeData speedValRight (ts, speedRight)
+  --printLn (join [int2string ts, " ", float2string distMu])
 );
 
 saveBuffersAndExit 2

@@ -93,9 +93,9 @@ loopFn (Uniform 0.0 4.0) (lam i. lam prior.
   modref leftSpeeds (snoc (deref leftSpeeds) speedLeft);
   modref rightSpeeds (snoc (deref rightSpeeds) speedRight);
 
-  -- Only run the model once every 10 iterations, using the values seen since
+  -- Only run the model once every 5 iterations, using the values seen since
   -- the last inference to base the observations on.
-  if eqi (modi i 10) 0 then
+  if eqi (modi i 5) 0 then
 
     let ld = median (deref leftDists) in
     modref leftDists (toList []);
@@ -116,6 +116,8 @@ loopFn (Uniform 0.0 4.0) (lam i. lam prior.
         (deref lastTs) in
     modref lastTs (Some ts);
 
+    -- Assume no rotation - the speed of the car is just the average of the
+    -- medians reported by each of the wheels.
     let speed = divf (addf ls.1 rs.1) 2.0 in
 
     let posterior = infer (BPF {particles = 1000}) (lam. distanceModel prior deltaTime ld rd speed) in

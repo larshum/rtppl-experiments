@@ -12,6 +12,8 @@ let distanceModel : Dist Float -> Option Float -> (Int, Float) -> (Int, Float)
   lam prior. lam deltaT. lam ld. lam rd. lam speedRotAvg.
   let distance = assume prior in
 
+  -- These are the medians of all distances observed since the last inference
+  -- run.
   match ld with (_, ldist) in
   match rd with (_, rdist) in
 
@@ -26,11 +28,12 @@ let distanceModel : Dist Float -> Option Float -> (Int, Float) -> (Int, Float)
     observe ldist (Gaussian distance 0.01);
     observe rdist (Gaussian distance 0.01);
 
-    -- Transition model. This step only applies when we have made a previous
-    -- estimation, so that we know how much time has passed since then.
+    -- Transition model. Unless this is the first iteration, we have some time
+    -- difference from the previous iteration (dt).
     match deltaT with Some dt then
       -- Compute the new distance by multiplying the estimated speed with the
-      -- delta time.
+      -- delta time. Note that the front distance increases when the speed is
+      -- negative (when we're driving in reverse).
       let newDistance = addf distance (mulf (negf speedMs) dt) in
       assume (Gaussian newDistance 0.01)
     else
