@@ -33,8 +33,8 @@ else if neqi options.printDist (negi 1) then
   let buf = _loadBuffer options.printDist in
   let printTsv = lam tsv.
     match tsv with (ts, dist) in
-    printLn (int2string ts);
-    match distEmpiricalSamples (unsafeCoerce dist) with (samples, weights) in
+    let dist : Dist Float = unsafeCoerce dist in
+    match distEmpiricalSamples dist with (samples, weights) in
     recursive let work = lam samples. lam weights.
       match (samples, weights) with ([s] ++ samples, [w] ++ weights) then
         printLn (join [float2string s, " ", float2string w]);
@@ -77,6 +77,7 @@ let rightDists = ref (toList []) in
 let leftSpeeds = ref (toList []) in
 let rightSpeeds = ref (toList []) in
 let lastTs = ref (None ()) in
+let n = 10 in
 
 loopFn (Uniform 0.0 4.0) (lam i. lam prior.
   -- Skip the delay if we are in replay mode, when we're debugging the code.
@@ -93,9 +94,9 @@ loopFn (Uniform 0.0 4.0) (lam i. lam prior.
   modref leftSpeeds (snoc (deref leftSpeeds) speedLeft);
   modref rightSpeeds (snoc (deref rightSpeeds) speedRight);
 
-  -- Only run the model once every 5 iterations (every 0.5s), using the values
+  -- Only run the model once every n iterations (every n/10 s), using the values
   -- seen since the last inference to base the observations on.
-  if eqi (modi i 5) 0 then
+  if eqi (modi i n) 0 then
 
     let ld = median (deref leftDists) in
     modref leftDists (toList []);

@@ -34,7 +34,6 @@ let distanceModel : Dist Float -> Option Float -> (Int, Float) -> (Int, Float)
       -- Compute the new distance by multiplying the estimated speed with the
       -- delta time. Note that the front distance increases when the speed is
       -- negative (when we're driving in reverse).
-      let newDistance = addf distance (mulf (negf speedMs) dt) in
-      assume (Gaussian newDistance 0.01)
+      addf distance (mulf (negf speedMs) dt)
     else
       distance
