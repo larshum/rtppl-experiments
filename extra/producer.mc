@@ -12,13 +12,14 @@ initBuffers options inputs outputs;
 -- Number of time steps
 let n = 100 in
 
--- Speed is -(0.8 / 10) m/s, with some small variation
--- Output as the number of rotations per seconds (wheel circumference is ≈35cm)
-let speedMsMu = negf (divf 0.8 (int2float (divi n 10))) in
+-- Speed is -0.08 m/s, with some small variation. We produce it as the number
+-- of rotations per seconds, as that is the input format (wheel circumference
+-- is ≈35cm). This encodes constant speed movement resulting in the front
+-- distance going from 0.2m to 1.0m.
+let speedMsMu = negf 0.08 in
 let speedRotMu = divf speedMsMu 0.35 in
 let distMuRef = ref 0.2 in
 
--- Steady movement from 0.2m to 1.0m distance (front) over n time-steps.
 loop n (lam i.
   -- Each timestamp is 100ms apart, to match the period in the 'runner'
   -- program.

@@ -93,8 +93,8 @@ loopFn (Uniform 0.0 4.0) (lam i. lam prior.
   modref leftSpeeds (snoc (deref leftSpeeds) speedLeft);
   modref rightSpeeds (snoc (deref rightSpeeds) speedRight);
 
-  -- Only run the model once every 5 iterations, using the values seen since
-  -- the last inference to base the observations on.
+  -- Only run the model once every 5 iterations (every 0.5s), using the values
+  -- seen since the last inference to base the observations on.
   if eqi (modi i 5) 0 then
 
     let ld = median (deref leftDists) in
