@@ -92,6 +92,7 @@ let state = {
 
 let n = 10 in
 
+-- TODO: read this from shared-memory
 let startTime =
   match clockGetTime () with (s, ns) in
   addi (muli s 1000000000) ns

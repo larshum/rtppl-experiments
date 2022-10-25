@@ -91,16 +91,25 @@ lang RTPPLBuffers
       else saveBuffersAndExit state
     else error "Buffer with provided ID not found in buffer state"
 
-  sem readInputBuffer : Int -> BufferState -> Mode -> (BufferState, TimeStampedValue)
-  sem readInputBuffer id state =
-  | Default _ -> (state, lvRead id)
+  sem readInputBuffer : (Int -> (Int, Opaque)) -> Int -> BufferState -> Mode
+                     -> (BufferState, TimeStampedValue)
+  sem readInputBuffer readFn id state =
+  | Default _ -> (state, readFn id)
   | Record _ ->
-    let tsv = lvRead id in
+    let tsv = readFn id in
     let state = pushBuffer id state tsv in
     (state, tsv)
   | Replay _ -> popBuffer id state
   | RecordBufferOnly _ ->
     error "Cannot read data when recording in buffer-only mode"
+
+  sem readDistInputBuffer : Int -> BufferState -> Mode -> (BufferState, TimeStampedValue)
+  sem readDistInputBuffer id state =
+  | mode -> readInputBuffer (lam id. lvRead id) id state mode
+
+  sem readFloatInputBuffer : Int -> BufferState -> Mode -> (BufferState, TimeStampedValue)
+  sem readFloatInputBuffer id state =
+  | mode -> readInputBuffer (lam id. lvReadFloat id) id state mode
 
   sem writeOutputBuffer : Int -> TimeStampedValue -> BufferState -> Mode -> BufferState
   sem writeOutputBuffer id tsv state =
@@ -151,21 +160,21 @@ let initBuffers = lam options. lam inputs. lam outputs.
   modref _bufferState (Some state);
   state
 
-let readData = lam id.
+let readData = lam lvReadFn. lam id.
   use RTPPLBuffers in
   let state = _getState () in
-  match readInputBuffer id state state.mode with (state, tsv) in
+  match readInputBuffer lvReadFn id state state.mode with (state, tsv) in
   modref _bufferState (Some state);
   tsv
 
 let readFloatData : Int -> (Int, Float) = lam id.
   use RTPPLBuffers in
-  match readData id with (ts, value) in
+  match readData lvRead id with (ts, value) in
   (ts, unsafeCoerce value)
 
 let readDistData : Int -> (Int, Dist Float) = lam id.
   use RTPPLBuffers in
-  match readData id with (ts, value) in
+  match readData lvReadFloat id with (ts, value) in
   (ts, unsafeCoerce value)
 
 let writeData : all a. Int -> (Int, a) -> () = lam id. lam outputData.
