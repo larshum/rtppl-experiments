@@ -33,6 +33,7 @@ else if neqi options.printDist (negi 1) then
   let buf = _loadBuffer options.printDist in
   let printTsv = lam tsv.
     match tsv with (ts, dist) in
+    printError (concat (int2string ts) "\n");
     let dist : Dist Float = unsafeCoerce dist in
     match distEmpiricalSamples dist with (samples, weights) in
     recursive let work = lam samples. lam weights.
@@ -98,6 +99,15 @@ loopFn (Uniform 0.0 4.0) (lam i. lam prior.
   -- seen since the last inference to base the observations on.
   if eqi (modi i n) 0 then
 
+    let ts =
+      let timestamps =
+        map
+          (lam x. x.0)
+          (join [deref leftDists, deref rightDists, deref leftSpeeds, deref rightSpeeds])
+      in
+      foldl maxi (head timestamps) (tail timestamps)
+    in
+
     let ld = median (deref leftDists) in
     modref leftDists (toList []);
     let rd = median (deref rightDists) in
@@ -106,9 +116,6 @@ loopFn (Uniform 0.0 4.0) (lam i. lam prior.
     modref leftSpeeds (toList []);
     let rs = median (deref rightSpeeds) in
     modref rightSpeeds (toList []);
-
-    let timestamps = map (lam x. x.0) [ld, rd, ls, rs] in
-    let ts = foldl mini (head timestamps) (tail timestamps) in
 
     -- Time since the last timestamp in seconds
     let deltaTime =
