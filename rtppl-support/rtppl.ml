@@ -12,10 +12,23 @@ let lv_write (id : int) (tsv : time_stamped_value) : unit =
   lv_write_stub id (ts, Obj.repr (Marshal.to_bytes value []))
 
 let read_binary (ch : in_channel) : Obj.t =
-  Marshal.from_channel ch
+  Obj.repr (input_value ch)
+
+let read_float (ch : in_channel) : float =
+  let b = Bytes.create 8 in
+  let n = input ch b 0 8 in
+  assert (n == 8);
+  let v = Bytes.get_int64_ne b 0 in
+  Int64.float_of_bits v
 
 let write_binary (ch : out_channel) (data : Obj.t) : unit =
-  Marshal.to_channel ch (Obj.obj data) []
+  output_value ch (Obj.obj data)
+
+let write_float (ch : out_channel) (data : float) : unit =
+  let b = Bytes.create 8 in
+  let v = Int64.bits_of_float data in
+  Bytes.set_int64_ne b 0 v;
+  output ch b 0 8
 
 type signal = int
 

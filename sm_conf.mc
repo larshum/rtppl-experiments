@@ -7,3 +7,4 @@ let distanceSideRight = 5
 let speedValLeft = 6
 let speedValRight = 7
 let obsDistanceFront = 8
+let obsDistanceBack = 9

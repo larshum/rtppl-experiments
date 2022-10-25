@@ -17,7 +17,7 @@ type BufferState = {
   outputs : [Int]
 }
 
-let _bufferFile = lam id. join ["trace-", int2string id, ".txt"]
+let _bufferFile = lam id. join ["trace-", int2string id]
 
 let _initBuffer = lam. toList []
 

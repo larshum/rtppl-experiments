@@ -47,11 +47,6 @@ else if neqi options.printDist (negi 1) then
   exit 0
 else
 
--- User has to declare the input and output sensors explicitly.
-let inputs = [distanceFrontLeft, distanceFrontRight, speedValLeft, speedValRight] in
-let outputs = [obsDistanceFront] in
-initBuffers options inputs outputs;
-
 let cmpTsv : (Int, Float) -> (Int, Float) -> Int = lam l. lam r.
   if gtf l.1 r.1 then 1
   else if ltf l.1 r.1 then negi 1
@@ -73,35 +68,58 @@ let median : [(Int, Float)] -> (Int, Float) = lam obs.
     get obs (divi n 2)
 in
 
+-- User has to declare the input and output sensors explicitly.
+let inputs = [
+  distanceFrontLeft, distanceFrontRight, distanceBackLeft, distanceBackRight,
+  speedValLeft, speedValRight] in
+let outputs = [obsDistanceFront, obsDistanceBack] in
+initBuffers options inputs outputs;
+
 let emptyBuffers = lam.
-  { leftDists = toList []
-  , rightDists = toList []
+  { frontLeftDists = toList []
+  , frontRightDists = toList []
+  , rearLeftDists = toList []
+  , rearRightDists = toList []
   , leftSpeeds = toList []
   , rightSpeeds = toList [] }
 in
 
 let state = {
   frontPriorTsv = (negi 1, Uniform 0.0 4.0),
+  rearPriorTsv = (negi 1, Uniform 0.0 4.0),
   buffers = emptyBuffers ()
 } in
 
 let n = 10 in
+
+let startTime =
+  match clockGetTime () with (s, ns) in
+  addi (muli s 1000000000) ns
+in
 
 loopFn state (lam i. lam state.
   -- Skip the delay if we are in replay mode, when we're debugging the code.
   (if options.replaying then ()
   else sleepMs 100);
 
-  match state with {frontPriorTsv = (lastTs, prior), buffers = buffers} in
+  match state with {
+    frontPriorTsv = (prevFrontTs, _),
+    rearPriorTsv = (prevRearTs, _),
+    buffers = buffers
+  } in
 
   let frontLeft = readFloatData distanceFrontLeft in
   let frontRight = readFloatData distanceFrontRight in
+  let rearLeft = readFloatData distanceBackLeft in
+  let rearRight = readFloatData distanceBackRight in
   let speedLeft = readFloatData speedValLeft in
   let speedRight = readFloatData speedValRight in
 
   let buffers = {buffers with
-    leftDists = snoc buffers.leftDists frontLeft,
-    rightDists = snoc buffers.rightDists frontRight,
+    frontLeftDists = snoc buffers.frontLeftDists frontLeft,
+    frontRightDists = snoc buffers.frontRightDists frontRight,
+    rearLeftDists = snoc buffers.rearLeftDists rearLeft,
+    rearRightDists = snoc buffers.rearRightDists rearRight,
     leftSpeeds = snoc buffers.leftSpeeds speedLeft,
     rightSpeeds = snoc buffers.rightSpeeds speedRight
   } in
@@ -110,38 +128,43 @@ loopFn state (lam i. lam state.
   -- seen since the last inference to base the observations on.
   if eqi (modi i n) 0 then
 
-    -- TODO: how do we get the actual "current" timestamp? This will only work
-    -- in replay mode, when we're never missing any data.
+    -- TODO: use the actual timestamp when replaying
     let ts =
-      let timestamps =
-        map
-          (lam x. x.0)
-          (join [buffers.leftDists, buffers.rightDists, buffers.leftSpeeds, buffers.rightSpeeds])
-      in
-      foldl maxi (head timestamps) (tail timestamps)
+      if options.replaying then
+        muli (subi i 1) 100000000
+      else
+        match clockGetTime () with (s, ns) in
+        subi (addi (muli s 1000000000) ns) startTime
     in
 
-    let ld = median buffers.leftDists in
-    let rd = median buffers.rightDists in
+    let fld = median buffers.frontLeftDists in
+    let frd = median buffers.frontRightDists in
+    let rld = median buffers.rearLeftDists in
+    let rrd = median buffers.rearRightDists in
     let ls = median buffers.leftSpeeds in
     let rs = median buffers.rightSpeeds in
-
-    -- Time since the last timestamp in seconds
-    let deltaTime =
-      if eqi lastTs (negi 1) then None ()
-      else Some (divf (int2float (subi ts lastTs)) 1000.0)
-    in
 
     -- Assume no rotation - the speed of the car is just the average of the
     -- medians reported by each of the wheels.
     let speed = divf (addf ls.1 rs.1) 2.0 in
 
-    let posterior = infer (BPF {particles = 1000}) (lam. distanceModel prior deltaTime ld rd speed) in
-    let distanceFrontTsv = (ts, posterior) in
+    -- Compute the rear and front distance using the same model, but with
+    -- opposite speeds.
+    let frontDistancePosterior =
+      infer (BPF {particles = 1000})
+        (lam. distanceModel state.frontPriorTsv ts fld frd speed)
+    in
+    let rearDistancePosterior =
+      infer (BPF {particles = 1000})
+        (lam. distanceModel state.rearPriorTsv ts rld rrd (negf speed))
+    in
 
-    writeData obsDistanceFront distanceFrontTsv;
+    let frontTsv = (ts, frontDistancePosterior) in
+    let rearTsv = (ts, rearDistancePosterior) in
 
-    {state with frontPriorTsv = distanceFrontTsv, buffers = emptyBuffers ()}
-  else
-    {state with frontPriorTsv = (lastTs, prior), buffers = buffers}
+    writeData obsDistanceFront frontTsv;
+    writeData obsDistanceBack rearTsv;
+
+    {state with frontPriorTsv = frontTsv, rearPriorTsv = rearTsv, buffers = emptyBuffers ()}
+  else {state with buffers = buffers}
 )
