@@ -73,66 +73,75 @@ let median : [(Int, Float)] -> (Int, Float) = lam obs.
     get obs (divi n 2)
 in
 
-let leftDists = ref (toList []) in
-let rightDists = ref (toList []) in
-let leftSpeeds = ref (toList []) in
-let rightSpeeds = ref (toList []) in
-let lastTs = ref (None ()) in
+let emptyBuffers = lam.
+  { leftDists = toList []
+  , rightDists = toList []
+  , leftSpeeds = toList []
+  , rightSpeeds = toList [] }
+in
+
+let state = {
+  frontPriorTsv = (negi 1, Uniform 0.0 4.0),
+  buffers = emptyBuffers ()
+} in
+
 let n = 10 in
 
-loopFn (Uniform 0.0 4.0) (lam i. lam prior.
+loopFn state (lam i. lam state.
   -- Skip the delay if we are in replay mode, when we're debugging the code.
   (if options.replaying then ()
   else sleepMs 100);
+
+  match state with {frontPriorTsv = (lastTs, prior), buffers = buffers} in
 
   let frontLeft = readFloatData distanceFrontLeft in
   let frontRight = readFloatData distanceFrontRight in
   let speedLeft = readFloatData speedValLeft in
   let speedRight = readFloatData speedValRight in
 
-  modref leftDists (snoc (deref leftDists) frontLeft);
-  modref rightDists (snoc (deref rightDists) frontRight);
-  modref leftSpeeds (snoc (deref leftSpeeds) speedLeft);
-  modref rightSpeeds (snoc (deref rightSpeeds) speedRight);
+  let buffers = {buffers with
+    leftDists = snoc buffers.leftDists frontLeft,
+    rightDists = snoc buffers.rightDists frontRight,
+    leftSpeeds = snoc buffers.leftSpeeds speedLeft,
+    rightSpeeds = snoc buffers.rightSpeeds speedRight
+  } in
 
   -- Only run the model once every n iterations (every n/10 s), using the values
   -- seen since the last inference to base the observations on.
   if eqi (modi i n) 0 then
 
+    -- TODO: how do we get the actual "current" timestamp? This will only work
+    -- in replay mode, when we're never missing any data.
     let ts =
       let timestamps =
         map
           (lam x. x.0)
-          (join [deref leftDists, deref rightDists, deref leftSpeeds, deref rightSpeeds])
+          (join [buffers.leftDists, buffers.rightDists, buffers.leftSpeeds, buffers.rightSpeeds])
       in
       foldl maxi (head timestamps) (tail timestamps)
     in
 
-    let ld = median (deref leftDists) in
-    modref leftDists (toList []);
-    let rd = median (deref rightDists) in
-    modref rightDists (toList []);
-    let ls = median (deref leftSpeeds) in
-    modref leftSpeeds (toList []);
-    let rs = median (deref rightSpeeds) in
-    modref rightSpeeds (toList []);
+    let ld = median buffers.leftDists in
+    let rd = median buffers.rightDists in
+    let ls = median buffers.leftSpeeds in
+    let rs = median buffers.rightSpeeds in
 
     -- Time since the last timestamp in seconds
     let deltaTime =
-      optionMap
-        (lam lastTs. divf (int2float (subi ts lastTs)) 1000.0)
-        (deref lastTs) in
-    modref lastTs (Some ts);
+      if eqi lastTs (negi 1) then None ()
+      else Some (divf (int2float (subi ts lastTs)) 1000.0)
+    in
 
     -- Assume no rotation - the speed of the car is just the average of the
     -- medians reported by each of the wheels.
     let speed = divf (addf ls.1 rs.1) 2.0 in
 
     let posterior = infer (BPF {particles = 1000}) (lam. distanceModel prior deltaTime ld rd speed) in
+    let distanceFrontTsv = (ts, posterior) in
 
-    writeData obsDistanceFront (ts, posterior);
+    writeData obsDistanceFront distanceFrontTsv;
 
-    posterior
+    {state with frontPriorTsv = distanceFrontTsv, buffers = emptyBuffers ()}
   else
-    prior
+    {state with frontPriorTsv = (lastTs, prior), buffers = buffers}
 )
