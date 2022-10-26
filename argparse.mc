@@ -6,7 +6,8 @@ type Options = {
   printDist : Int,
   recording : Bool,
   replaying : Bool,
-  recordBufferOnly : Bool
+  recordBufferOnly : Bool,
+  roomMapFile : String
 }
 
 let optionsDefault = {
@@ -14,7 +15,8 @@ let optionsDefault = {
   printDist = negi 1,
   recording = false,
   replaying = false,
-  recordBufferOnly = false
+  recordBufferOnly = false,
+  roomMapFile = ""
 }
 
 let recordMsg = join [
@@ -52,7 +54,10 @@ let optionsConfig : ParseConfig Options = [
   , lam p : ArgPart Options. {p.options with printDist = string2int (argToString p)} ),
   ( [("--record-buffer-only", "", "")]
   , recordBufferOnlyMsg
-  , lam p : ArgPart Options. {p.options with recordBufferOnly = true} )
+  , lam p : ArgPart Options. {p.options with recordBufferOnly = true} ),
+  ( [("--room-map", " ", "<file>")]
+  , "Sets the file from which to read a map of a room"
+  , lam p : ArgPart Options. {p.options with roomMapFile = argToString p} )
 ]
 
 let parseOptions : [String] -> Options = lam args.
