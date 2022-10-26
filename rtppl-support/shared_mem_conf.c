@@ -62,5 +62,6 @@ shared_mem_t sm_regs[] = {
   },{
     .name = "StartTime",
    . size = sizeof(sensor_val_t),
-   .mgmt - NULL
+   .mgmt  = NULL
+  }
 };
