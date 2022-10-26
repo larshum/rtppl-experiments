@@ -1,9 +1,12 @@
 include "ext/dist-ext.mc"
 include "../buffers.mc"
+include "../room.mc"
 
 mexpr
 
 let options = {optionsDefault with recording = true, recordBufferOnly = true} in
+
+let room = readMap "maps/simple-map.txt" in
 
 let inputs = [] in
 let outputs = [
@@ -15,14 +18,16 @@ initBuffers options inputs outputs;
 -- Number of time steps
 let n = 100 in
 
--- Speed is -0.08 m/s, with some small variation. We produce it as the number
--- of rotations per minute (RPM), as that is the input format (wheel circumference
--- is ≈35cm). This encodes constant speed movement resulting in the front
--- distance increasing from 0.2m to 1.0m.
-let speedMsMu = negf 0.08 in
-let speedRotMu = divf (mulf 60.0 speedMsMu) 0.35 in
-let frontDistMuRef = ref 0.2 in
-let rearDistMuRef = ref 1.8 in
+-- Speed is constant at -0.08 m/s. We output it as RPM, as that is the input
+-- from sensors (using wheel circumference ≈35cm).
+let speedMs = negf 0.08 in
+let speedRot = divf (mulf 60.0 speedMs) 0.35 in
+
+-- Car will move backwards from (1.5, 1.0) to (0.7, 1.0). The left and right
+-- distances are constantly 0.9, while the front goes from 0.4 to 1.2 and the
+-- rear from 1.4 to 0.6.
+let initPos = (1.5, 1.0) in
+let pos = ref initPos in
 
 writeData startTime (0, 0);
 
@@ -31,29 +36,38 @@ loop n (lam i.
   -- 'runner' program.
   let ts = muli i 100000000 in
 
-  -- Compute the new distance (front and rear) as the previous distance plus
-  -- the constant speed times the time since the last time-stamp, which is
-  -- always 100ms (=0.1s).
-  let frontDistMu = subf (deref frontDistMuRef) (mulf speedMsMu 0.1) in
-  let rearDistMu = addf (deref rearDistMuRef) (mulf speedMsMu 0.1) in
-  modref frontDistMuRef frontDistMu;
-  modref rearDistMuRef rearDistMu;
+  -- Compute the new actual position based on the movement. We only move along
+  -- the x-axis, for simplicity.
+  match deref pos with (x0, y0) in
+  let newPos = (addf x0 (mulf speedMs 0.1), y0) in
+  modref pos newPos;
 
-  let distFrontLeft = gaussianSample frontDistMu 0.02 in
-  let distFrontRight = gaussianSample frontDistMu 0.02 in
-  let distRearLeft = gaussianSample rearDistMu 0.02 in
-  let distRearRight = gaussianSample rearDistMu 0.02 in
+  -- Compute the actual distances in all four directions, based on the provided
+  -- map.
+  let frontDist = expectedDistanceFront room 0.0 newPos in
+  let rearDist = expectedDistanceRear room 0.0 newPos in
+  let leftDist = expectedDistanceLeft room 0.0 newPos in
+  let rightDist = expectedDistanceRight room 0.0 newPos in
 
-  let speedLeft = gaussianSample speedRotMu 0.01 in
-  let speedRight = gaussianSample speedRotMu 0.01 in
+  -- Produce estimates to simulate the noise of the actual sensors.
+  let distFrontLeft = gaussianSample frontDist 0.02 in
+  let distFrontRight = gaussianSample frontDist 0.02 in
+  let distRearLeft = gaussianSample rearDist 0.02 in
+  let distRearRight = gaussianSample rearDist 0.02 in
+  let distSideLeft = gaussianSample leftDist 0.02 in
+  let distSideRight = gaussianSample rightDist 0.02 in
+
+  let speedLeft = gaussianSample speedRot 0.01 in
+  let speedRight = gaussianSample speedRot 0.01 in
 
   writeData distanceFrontLeft (ts, distFrontLeft);
   writeData distanceFrontRight (ts, distFrontRight);
   writeData distanceBackLeft (ts, distRearLeft);
   writeData distanceBackRight (ts, distRearRight);
+  writeData distanceSideLeft (ts, distSideLeft);
+  writeData distanceSideRight (ts, distSideRight);
   writeData speedValLeft (ts, speedLeft);
   writeData speedValRight (ts, speedRight)
-  --printLn (join [int2string ts, " ", float2string distMu])
 );
 
 saveBuffersAndExit 2

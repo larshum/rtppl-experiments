@@ -84,9 +84,9 @@ match coordToPosition (roomDims roomMap) with (maxX, maxY) in
 
 let positionPrior =
   distCombineIndependent
-  [ Uniform 0.0 maxX -- prior for x-coordinate
-  , Uniform 0.0 maxY -- prior for y-coordinate
-  , Uniform 0.0 (mulf 2.0 pi) ] -- prior for the angle (direction of the car)
+    [ Uniform 0.0 maxX -- prior for x-coordinate
+    , Uniform 0.0 maxY -- prior for y-coordinate
+    , Uniform 0.0 (mulf 2.0 pi) ] -- prior for the angle (direction of the car)
 in
 let state = {
   posPriorTsv = (t0, positionPrior),

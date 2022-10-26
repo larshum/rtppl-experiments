@@ -117,6 +117,8 @@ loopFn state (lam i. lam state.
 
     let ts =
       if options.replaying then
+        -- NOTE: This is only the correct choice for our manufactured data -
+        -- not sure what it should be when replaying "actual" data?
         muli (subi i 1) 100000000
       else
         match clockGetTime () with (s, ns) in
