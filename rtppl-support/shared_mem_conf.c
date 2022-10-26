@@ -59,5 +59,8 @@ shared_mem_t sm_regs[] = {
     .name = "ObservedDistanceBack",
     .size = 1 << 16,
     .mgmt = NULL
-  }
+  },{
+    .name = "StartTime",
+   . size = sizeof(sensor_val_t),
+   .mgmt - NULL
 };

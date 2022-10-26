@@ -42,10 +42,11 @@ extern shared_mem_t sm_regs[];
 #define SPEED_VAL_RIGHT       (&sm_regs[7])
 #define OBS_DISTANCE_FRONT    (&sm_regs[8])
 #define OBS_DISTANCE_BACK     (&sm_regs[9])
+#define START_TIME	      (&sm_regs[10])
 
 /**
  * Number of shared memory objects configured.
  */
-#define SM_OBJECT_COUNT 9
+#define SM_OBJECT_COUNT 11
 
 #endif //SHARED_MEM_CONF_H_
