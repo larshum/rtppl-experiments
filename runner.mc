@@ -71,7 +71,7 @@ in
 -- User has to declare the input and output sensors explicitly.
 let inputs = [
   distanceFrontLeft, distanceFrontRight, distanceBackLeft, distanceBackRight,
-  speedValLeft, speedValRight] in
+  speedValLeft, speedValRight, startTime] in
 let outputs = [obsDistanceFront, obsDistanceBack] in
 initBuffers options inputs outputs;
 

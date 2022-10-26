@@ -8,7 +8,7 @@ let options = {optionsDefault with recording = true, recordBufferOnly = true} in
 let inputs = [] in
 let outputs = [
   distanceFrontLeft, distanceFrontRight, distanceBackLeft, distanceBackRight,
-  speedValLeft, speedValRight
+  speedValLeft, speedValRight, startTime
 ] in
 initBuffers options inputs outputs;
 
@@ -23,6 +23,8 @@ let speedMsMu = negf 0.08 in
 let speedRotMu = divf speedMsMu 0.35 in
 let frontDistMuRef = ref 0.2 in
 let rearDistMuRef = ref 1.8 in
+
+writeData startTime (0, 0);
 
 loop n (lam i.
   -- Each timestamp is 100ms (100*10^6 ns) apart, to match the period in the
