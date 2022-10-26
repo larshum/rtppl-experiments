@@ -129,7 +129,6 @@ loopFn state (lam i. lam state.
   -- seen since the last inference to base the observations on.
   if eqi (modi i n) 0 then
 
-    -- TODO: use the actual timestamp when replaying
     let ts =
       if options.replaying then
         muli (subi i 1) 100000000

@@ -61,7 +61,7 @@ let parseOptions : [String] -> Options = lam args.
   in
   match result with ParseOK r then
     let options = r.options in
-    if and options.recording options.replaying then 
+    if and options.recording options.replaying then
       error "Cannot enable recording and replaying at the same time"
     else if and (neqi options.printFloat (negi 1)) (neqi options.printDist (negi 1)) then
       error "Can only print the contents of one buffer at a time"
