@@ -40,7 +40,7 @@ let printPositionDistributionBuffer : Int -> () = lam id.
     -- NOTE: the angle is used when estimating, but it is not very interesting
     -- in the end.
     match sample with [x, y, _] in
-    join ["(", float2string x, " ", float2string y, ")"]
+    join [float2string x, " ", float2string y]
   in
   let buf = _loadBuffer id in
   let printTsv = lam tsv.
