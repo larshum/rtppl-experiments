@@ -52,6 +52,10 @@ shared_mem_t sm_regs[] = {
     .size = sizeof(sensor_val_t),
     .mgmt = NULL
   },{
+    .name = "StartTime",
+    .size = sizeof(sensor_val_t),
+    .mgmt  = NULL
+  },{
     .name = "ObservedDistanceFront",
     .size = 1 << 16,
     .mgmt = NULL
@@ -60,8 +64,8 @@ shared_mem_t sm_regs[] = {
     .size = 1 << 16,
     .mgmt = NULL
   },{
-    .name = "StartTime",
-   . size = sizeof(sensor_val_t),
-   .mgmt  = NULL
+    .name = "ObservedPosition",
+    .size = 1 << 16,
+    .mgmt = NULL
   }
 };
