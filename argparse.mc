@@ -4,6 +4,7 @@ include "bool.mc"
 type Options = {
   printFloat : Int,
   printDist : Int,
+  printPosDist : Int,
   recording : Bool,
   replaying : Bool,
   recordBufferOnly : Bool,
@@ -13,6 +14,7 @@ type Options = {
 let optionsDefault = {
   printFloat = negi 1,
   printDist = negi 1,
+  printPosDist = negi 1,
   recording = false,
   replaying = false,
   recordBufferOnly = false,
@@ -34,6 +36,8 @@ let printFloatMsg = "Prints the contents of a buffer containing floats."
 
 let printDistMsg = "Prints the contents of a buffer containing a distribution of floats."
 
+let printPosDistMsg = "Prints the contents of a buffer containing a position distribution."
+
 let recordBufferOnlyMsg = join [
   "Configures the recording mode so that it only writes to buffers. ",
   "This is useful when producing synthetic data."
@@ -52,6 +56,9 @@ let optionsConfig : ParseConfig Options = [
   ( [("--print-dist", " ", "<index>")]
   , printDistMsg
   , lam p : ArgPart Options. {p.options with printDist = string2int (argToString p)} ),
+  ( [("--print-pos-dist", " ", "<index>")]
+  , printPosDistMsg
+  , lam p : ArgPart Options. {p.options with printPosDist = string2int (argToString p)} ),
   ( [("--record-buffer-only", "", "")]
   , recordBufferOnlyMsg
   , lam p : ArgPart Options. {p.options with recordBufferOnly = true} ),
