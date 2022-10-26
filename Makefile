@@ -14,4 +14,4 @@ extra/producer: extra/producer.mc
 	mi compile $< --output $@
 
 clean:
-	rm -rf $(TRACE_INPUTS) $(TRACE_OUTPUTS) out out.mc extra/producer
+	rm -rf $(TRACE_INPUTS) $(TRACE_OUTPUTS) out out.mc extra/producer plots
