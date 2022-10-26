@@ -33,7 +33,7 @@ let distanceModel : (Int, Dist Float) -> Int -> (Int, Float)
   match ld with (lts, ldist) in
   match rd with (rts, rdist) in
 
-  let speedMetersPerSecAvg = mulf speedRotAvg wheelCircumference in
+  let speedMetersPerSecAvg = divf (mulf speedRotAvg wheelCircumference) 60.0 in
   let speedMetersPerSec = assume (Gaussian speedMetersPerSecAvg 0.001) in
 
   -- The distance is invalid if it is outside of the bounds.

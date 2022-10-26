@@ -8,7 +8,7 @@ let options = {optionsDefault with recording = true, recordBufferOnly = true} in
 let inputs = [] in
 let outputs = [
   distanceFrontLeft, distanceFrontRight, distanceBackLeft, distanceBackRight,
-  speedValLeft, speedValRight, startTime
+  distanceSideLeft, distanceSideRight, speedValLeft, speedValRight, startTime
 ] in
 initBuffers options inputs outputs;
 
@@ -16,11 +16,11 @@ initBuffers options inputs outputs;
 let n = 100 in
 
 -- Speed is -0.08 m/s, with some small variation. We produce it as the number
--- of rotations per seconds, as that is the input format (wheel circumference
+-- of rotations per minute (RPM), as that is the input format (wheel circumference
 -- is ≈35cm). This encodes constant speed movement resulting in the front
 -- distance increasing from 0.2m to 1.0m.
 let speedMsMu = negf 0.08 in
-let speedRotMu = divf speedMsMu 0.35 in
+let speedRotMu = divf (mulf 60.0 speedMsMu) 0.35 in
 let frontDistMuRef = ref 0.2 in
 let rearDistMuRef = ref 1.8 in
 

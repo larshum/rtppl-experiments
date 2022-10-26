@@ -4,6 +4,8 @@ include "argparse.mc"
 include "shared.mc"
 include "room.mc"
 
+let wheelCircumference = 0.35
+
 let positionModel : RoomMap -> (Int, Dist [Float]) -> Int
                  -> Float -> Float -> Float -> Float -> Float -> [Float] =
   lam m. lam posPriorTsv. lam t1. lam speed. lam frontDistObs. lam rearDistObs.
@@ -137,7 +139,8 @@ loopFn state (lam i. lam state.
 
     -- Naively assume that the speed is the average of the median speed of the
     -- two wheels.
-    let speed = divf (addf ls.1 rs.1) 2.0 in
+    let speedRPM = divf (addf ls.1 rs.1) 2.0 in
+    let speed = divf (mulf speedRPM wheelCircumference) 60.0 in
 
     -- We assume the timestamps of all observations are the same
     let ts = fld.0 in
