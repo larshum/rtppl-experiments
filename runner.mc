@@ -92,11 +92,8 @@ let state = {
 
 let n = 10 in
 
--- TODO: read this from shared-memory
-let startTime =
-  match clockGetTime () with (s, ns) in
-  addi (muli s 1000000000) ns
-in
+-- We use t0 as the initial time at which execution started.
+match readFloatData startTime with (t0, _) in
 
 loopFn state (lam i. lam state.
   -- Skip the delay if we are in replay mode, when we're debugging the code.
@@ -134,7 +131,7 @@ loopFn state (lam i. lam state.
         muli (subi i 1) 100000000
       else
         match clockGetTime () with (s, ns) in
-        subi (addi (muli s 1000000000) ns) startTime
+        subi (addi (muli s 1000000000) ns) t0
     in
 
     let fld = median buffers.frontLeftDists in
