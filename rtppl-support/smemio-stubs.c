@@ -1,6 +1,8 @@
+#include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <caml/alloc.h>
 #include <caml/memory.h>
@@ -23,13 +25,33 @@ void initIfNeeded() {
 value lv_read_helper(value ocamlPort, value tsv, bool isFloat) {
   int port = Int_val(ocamlPort);
   initIfNeeded();
-  sm_read(&sm_regs[port], &sensor_data[port]);
   tsv = caml_alloc(2, 0);
-  Store_field(tsv, 0, Val_int(sensor_data[port].ts));
   if (isFloat) {
-    Store_field(tsv, 1, caml_copy_double(*((double*)sensor_data[port].val)));
+    sm_read(&sm_regs[port], &sensor_data[port]);
+    Store_field(tsv, 0, Val_int(sensor_data[port].ts));
+    Store_field(tsv, 1, caml_copy_double(sensor_data[port].val));
   } else {
-    Store_field(tsv, 1, caml_copy_string((char*)sensor_data[port].val));
+    shared_mem_t *sm = &sm_regs[port];
+
+    // Take the mutex
+    if (sem_wait(sm->mgmt->mutex) == -1) {
+      SM_PRINT_ERROR("waiting for mutex %s -> %s", sm->mgmt->mutexName, strerror(errno));
+    } else {
+      SM_PRINT_INFO("Successfully took mutex %s!", sm->mgmt->mutexName);
+    }
+
+    // Copy the content from the shared memory
+    long long l;
+    memcpy((void*)&l, sm->data_p, sizeof(long long));
+    Store_field(tsv, 0, Val_int(l));
+    Store_field(tsv, 1, caml_copy_string(sm->data_p+sizeof(long long)));
+
+    // Give the mutex back
+    if (sem_post(sm->mgmt->mutex) == -1) {
+      SM_PRINT_ERROR("returning mutex %s -> %s", sm->mgmt->mutexName, strerror(errno));
+    } else {
+      SM_PRINT_INFO("Successfully returned mutex %s!", sm->mgmt->mutexName);
+    }
   }
   return tsv;
 }
@@ -37,14 +59,33 @@ value lv_read_helper(value ocamlPort, value tsv, bool isFloat) {
 void lv_write_helper(value ocamlPort, value tsv, bool isFloat) {
   int port = Int_val(ocamlPort);
   initIfNeeded();
-  sensor_data[port].ts = Int_val(Field(tsv, 0));
   if (isFloat) {
-    double d = Double_val(Field(tsv, 1));
-    sensor_data[port].val = (void*)&d;
+    sensor_data[port].ts = Int_val(Field(tsv, 0));
+    sensor_data[port].val = Double_val(Field(tsv, 1));
+    sm_write(&sm_regs[port], &sensor_data[port]);
   } else {
-    sensor_data[port].val = (void*)Bytes_val(Field(tsv, 1));
+    shared_mem_t *sm = &sm_regs[port];
+
+    // Take the mutex
+    if (sem_wait(sm->mgmt->mutex) == -1) {
+      SM_PRINT_ERROR("waiting for mutex %s -> %s", sm->mgmt->mutexName, strerror(errno));
+    } else {
+      SM_PRINT_INFO("Successfully took mutex %s!", sm->mgmt->mutexName);
+    }
+
+    // Copy the content to the shared memory
+    long long l = Int_val(Field(tsv, 0));
+    memcpy(sm->data_p, (void*)&l, sizeof(long long));
+    int n = caml_string_length(Field(tsv, 1));
+    memcpy(sm->data_p+sizeof(long long), Bytes_val(Field(tsv, 1)), n);
+
+    // Give the mutex back
+    if (sem_post(sm->mgmt->mutex) == -1) {
+      SM_PRINT_ERROR("returning mutex %s -> %s", sm->mgmt->mutexName, strerror(errno));
+    } else {
+      SM_PRINT_INFO("Successfully returned mutex %s!", sm->mgmt->mutexName);
+    }
   }
-  sm_write(&sm_regs[port], &sensor_data[port]);
 }
 
 value lv_read_stub(value ocamlPort) {
