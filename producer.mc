@@ -1,6 +1,6 @@
 include "ext/dist-ext.mc"
-include "../buffers.mc"
-include "../room.mc"
+include "buffers.mc"
+include "room.mc"
 
 mexpr
 
