@@ -47,6 +47,8 @@ if len(sys.argv) > 1:
                 data[y][x] += 1
             axs.imshow(data)
             axs.imshow(im, alpha=0.5)
+            axs.set_xlabel("x")
+            axs.set_ylabel("y")
             fig.savefig(f"{target}/{chr(int(i/1000)+66)}.png")
             plt.close()
             i = i + 1000

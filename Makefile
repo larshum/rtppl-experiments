@@ -5,13 +5,16 @@ MAP_FILE=maps/map-with-wall
 $(TRACE_OUTPUTS): out $(TRACE_INPUTS)
 	./out --room-map $(MAP_FILE).txt --replay
 
+plot:
+	./out --print-pos-dist 11 | python3 scripts/pos-plot.py $(MAP_FILE).png
+
 out: position-model.mc argparse.mc buffers.mc room.mc
 	cppl $<
 
 $(TRACE_INPUTS): producer
 	./$< $(MAP_FILE).txt
 
-producer: producer.mc
+producer: producer.mc room.mc
 	mi compile $< --output $@
 
 clean:

@@ -11,9 +11,10 @@ type RoomMap = [[Bool]]
 -- which is a sequence of 0's and 1's of length equal to #rows * #cols.
 let readMap : String -> RoomMap = lam filename.
   let convChar = lam c. eqc c '1' in
-  let s = readFile filename in
+  let s = strTrim (readFile filename) in
   match strSplit "\n" s with [coordsLine] ++ rows then
     match strSplit " " coordsLine with [nrows, ncols] then
+      let rows = reverse rows in
       let nrows = string2int nrows in
       let ncols = string2int ncols in
       create nrows (lam r. map convChar (get rows r))
@@ -29,12 +30,12 @@ let printMap : RoomMap -> String = lam m.
   if eqi nrows 0 then "0 0"
   else
     let ncols = length (head m) in
-    let dataStr = join (map (lam row. printRow row) m) in
+    let dataStr = join (map (lam row. printRow row) (reverse m)) in
     join [int2string nrows, " ", int2string ncols, "\n", dataStr]
 
 -- Sanity check: reading and printing a test map should yield exactly the same
 -- string as stored in the original file.
-utest printMap (readMap "maps/test-map.txt") with readFile "maps/test-map.txt" using eqString
+utest printMap (readMap "maps/map-with-wall.txt") with readFile "maps/map-with-wall.txt" using eqString
 
 let roomDims : RoomMap -> (Int, Int) = lam m.
   let nrows = length m in
@@ -47,9 +48,18 @@ let positionToCoord : (Float, Float) -> (Int, Int) = lam xy.
   match xy with (x, y) in
   (floorfi (mulf y 10.0), floorfi (mulf x 10.0))
 
+let eqCoord = lam l. lam r. and (eqi l.0 r.0) (eqi l.1 r.1)
+utest positionToCoord (1.23, 0.5) with (5, 12) using eqCoord
+utest positionToCoord (6.44, 3.99) with (39, 64) using eqCoord
+
 let coordToPosition : (Int, Int) -> (Float, Float) = lam rowCol.
   match rowCol with (row, col) in
   (divf (int2float col) 10.0, divf (int2float row) 10.0)
+
+let eqPos = lam l. lam r. and (eqf l.0 r.0) (eqf l.1 r.1)
+utest coordToPosition (1, 0) with (0.0, 0.1) using eqPos
+utest coordToPosition (positionToCoord (1.25, 0.037))
+with  coordToPosition (positionToCoord (1.20, 0.0)) using eqPos
 
 -- Determine whether the coordinate of the map corresponding to a given
 -- position (x,y) is within bounds, i.e. whether it is not obstructed.
