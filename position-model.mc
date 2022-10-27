@@ -128,14 +128,14 @@ loopFn state (lam i. lam state.
 
   if eqi (modi i n) 0 then
 
-    let fld = median buffers.frontLeftDists in
-    let frd = median buffers.frontRightDists in
-    let rld = median buffers.rearLeftDists in
-    let rrd = median buffers.rearRightDists in
-    let sld = median buffers.sideLeftDists in
-    let srd = median buffers.sideRightDists in
-    let ls = median buffers.leftSpeeds in
-    let rs = median buffers.rightSpeeds in
+    let fld = median cmpTsv buffers.frontLeftDists in
+    let frd = median cmpTsv buffers.frontRightDists in
+    let rld = median cmpTsv buffers.rearLeftDists in
+    let rrd = median cmpTsv buffers.rearRightDists in
+    let sld = median cmpTsv buffers.sideLeftDists in
+    let srd = median cmpTsv buffers.sideRightDists in
+    let ls = median cmpTsv buffers.leftSpeeds in
+    let rs = median cmpTsv buffers.rightSpeeds in
 
     -- Naively assume that the speed is the average of the median speed of the
     -- two wheels.
@@ -151,6 +151,9 @@ loopFn state (lam i. lam state.
       infer (BPF {particles = 1000})
         (lam. positionModel roomMap state.posPriorTsv ts speed fld.1 rld.1 sld.1 srd.1)
     in
+    match distEmpiricalSamples posPosterior with (samples, _) in
+    match samples with [xValues, yValues] ++ _ in
+    printLn (join ["Mean values: x = ", float2string (median cmpFloat xValues), ", y = ", float2string (median cmpFloat yValues)]);
 
     let posteriorTsv = (ts, posPosterior) in
 
