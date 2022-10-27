@@ -20,7 +20,7 @@ let positionModel : RoomMap -> (Int, Dist [Float]) -> Int
 
     -- NOTE: this could probably be improved by considering the distance the
     -- wheels have travelled.
-    let newAngle = assume (Gaussian angle 0.5) in
+    let newAngle = assume (Gaussian angle pi) in
 
     -- Compute difference between timestamps and convert difference to a time
     -- in seconds.
