@@ -59,22 +59,33 @@ let handleOptions : Options -> () = lam options.
     printPositionDistributionBuffer options.printPosDist
   else ()
 
-let cmpTsv : (Int, Float) -> (Int, Float) -> Int = lam l. lam r.
-  if gtf l.1 r.1 then 1
-  else if ltf l.1 r.1 then negi 1
-  else 0
-
 let cmpFloat : Float -> Float -> Int = lam l. lam r.
   if gtf l r then 1
   else if ltf l r then negi 1
   else 0
 
+let floatAvg : Float -> Float -> Float = lam l. lam r.
+  divf (addf l r) 2.0
+
+let cmpTsv : (Int, Float) -> (Int, Float) -> Int = lam l. lam r.
+  if gtf l.1 r.1 then 1
+  else if ltf l.1 r.1 then negi 1
+  else 0
+
+let tsvAvg : (Int, Float) -> (Int, Float) -> (Int, Float) = lam l. lam r.
+  match l with (tsl, vl) in
+  match r with (tsr, vr) in
+  (mini tsl tsr, floatAvg vl vr)
+
 -- Finds the median among a given sequence of observations. If there is an even
 -- number of observations, the median is given the minimum timestamp among the
 -- two considered values.
-let median : all a. (a -> a -> Int) -> [a] -> a =
-  lam cmp. lam obs.
+let median : all a. (a -> a -> Int) -> (a -> a -> a) -> [a] -> a =
+  lam cmp. lam merge. lam obs.
   let n = length obs in
   let obs = sort cmp obs in
-  -- NOTE: technically not correct median computation
-  get obs (divi n 2)
+  if eqi (modi n 2) 0 then
+    let mid = divi n 2 in
+    merge (get obs mid) (get obs (addi mid 1))
+  else
+    get obs (divi n 2)

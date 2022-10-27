@@ -128,14 +128,14 @@ loopFn state (lam i. lam state.
 
   if eqi (modi i n) 0 then
 
-    let fld = median cmpTsv buffers.frontLeftDists in
-    let frd = median cmpTsv buffers.frontRightDists in
-    let rld = median cmpTsv buffers.rearLeftDists in
-    let rrd = median cmpTsv buffers.rearRightDists in
-    let sld = median cmpTsv buffers.sideLeftDists in
-    let srd = median cmpTsv buffers.sideRightDists in
-    let ls = median cmpTsv buffers.leftSpeeds in
-    let rs = median cmpTsv buffers.rightSpeeds in
+    let fld = median cmpTsv tsvAvg buffers.frontLeftDists in
+    let frd = median cmpTsv tsvAvg buffers.frontRightDists in
+    let rld = median cmpTsv tsvAvg buffers.rearLeftDists in
+    let rrd = median cmpTsv tsvAvg buffers.rearRightDists in
+    let sld = median cmpTsv tsvAvg buffers.sideLeftDists in
+    let srd = median cmpTsv tsvAvg buffers.sideRightDists in
+    let ls = median cmpTsv tsvAvg buffers.leftSpeeds in
+    let rs = median cmpTsv tsvAvg buffers.rightSpeeds in
 
     -- Naively assume that the speed is the average of the median speed of the
     -- two wheels.
@@ -153,7 +153,9 @@ loopFn state (lam i. lam state.
     in
     match distEmpiricalSamples posPosterior with (samples, _) in
     match samples with [xValues, yValues] ++ _ in
-    printLn (join ["Mean values: x = ", float2string (median cmpFloat xValues), ", y = ", float2string (median cmpFloat yValues)]);
+    printLn (join [
+      "Mean values: x = ", float2string (median cmpFloat floatAvg xValues),
+      ", y = ", float2string (median cmpFloat floatAvg yValues)]);
 
     let posteriorTsv = (ts, posPosterior) in
 

@@ -64,8 +64,11 @@ with  coordToPosition (positionToCoord (1.20, 0.0)) using eqPos
 -- Determine whether the coordinate of the map corresponding to a given
 -- position (x,y) is within bounds, i.e. whether it is not obstructed.
 let withinRoomBounds : RoomMap -> (Float, Float) -> Bool = lam m. lam xy.
+  match roomDims m with (nrows, ncols) in
   match positionToCoord xy with (row, col) in
-  not (get (get m row) col)
+  if or (or (lti row 0) (geqi row nrows)) (or (lti col 0) (geqi col ncols)) then
+    false
+  else not (get (get m row) col)
 
 -- Compute the expected distance needed to travel until we collide with a wall
 -- or other obstructions in according to the map.
