@@ -37,7 +37,7 @@ let distanceModel : (Int, Dist Float) -> Int -> (Int, Float)
 
   -- The distance is invalid if it is outside of the bounds.
   if or (ltf distance 0.0) (gtf distance maxDist) then
-    weight 0.0;
+    weight (negf inf);
     distance
   else
     -- Observation model

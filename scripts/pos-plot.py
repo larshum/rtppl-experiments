@@ -44,7 +44,8 @@ if len(sys.argv) > 1:
                 x, y, _ = line.split(" ")
                 x = int(10 * float(x))
                 y = int(10 * float(y))
-                data[y][x] += 1
+                if x >= 0 and x < len(data[0]) and y >= 0 and y < len(data):
+                    data[y][x] += 1
             axs.imshow(data)
             axs.imshow(im, alpha=0.5)
             axs.set_xlabel("x")

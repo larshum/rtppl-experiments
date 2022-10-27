@@ -25,6 +25,8 @@ let positionModel : RoomMap -> (Int, Dist [Float]) -> Int
     -- in seconds.
     let timeDiff = divf (int2float (subi t1 t0)) 1000000000.0 in
 
+    -- Estimate the current position given speed and time difference, with some
+    -- uncertainty.
     let dist = assume (Gaussian (mulf speed timeDiff) 0.02) in
     let x1 = addf x0 (mulf dist (cos newAngle)) in
     let y1 = addf y0 (mulf dist (sin newAngle)) in
@@ -43,7 +45,7 @@ let positionModel : RoomMap -> (Int, Dist [Float]) -> Int
 
     [x1, y1, newAngle]
   else
-    weight 0.0;
+    weight (negf inf);
     [x0, y0, angle]
 
 mexpr
