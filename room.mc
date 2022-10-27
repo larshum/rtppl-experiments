@@ -14,7 +14,6 @@ let readMap : String -> RoomMap = lam filename.
   let s = strTrim (readFile filename) in
   match strSplit "\n" s with [coordsLine] ++ rows then
     match strSplit " " coordsLine with [nrows, ncols] then
-      let rows = reverse rows in
       let nrows = string2int nrows in
       let ncols = string2int ncols in
       create nrows (lam r. map convChar (get rows r))
@@ -30,7 +29,7 @@ let printMap : RoomMap -> String = lam m.
   if eqi nrows 0 then "0 0"
   else
     let ncols = length (head m) in
-    let dataStr = join (map (lam row. printRow row) (reverse m)) in
+    let dataStr = join (map (lam row. printRow row) m) in
     join [int2string nrows, " ", int2string ncols, "\n", dataStr]
 
 -- Sanity check: reading and printing a test map should yield exactly the same

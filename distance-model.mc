@@ -5,13 +5,12 @@ include "string.mc"
 
 include "argparse.mc"
 include "buffers.mc"
+include "constants.mc"
 include "shared.mc"
 include "sm_conf.mc"
 
 let maxDist = 4.0
 let priorDist = Uniform 0.0 maxDist
-
-let wheelCircumference = 0.35
 
 let distAtTime = lam dist. lam speedMetersPerSec. lam t0. lam t1.
   if eqi t0 (negi 1) then
@@ -38,7 +37,7 @@ let distanceModel : (Int, Dist Float) -> Int -> (Int, Float)
 
   -- The distance is invalid if it is outside of the bounds.
   if or (ltf distance 0.0) (gtf distance maxDist) then
-    weight (negf inf);
+    weight 0.0;
     distance
   else
     -- Observation model

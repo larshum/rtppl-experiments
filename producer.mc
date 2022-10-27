@@ -1,5 +1,6 @@
 include "ext/dist-ext.mc"
 include "buffers.mc"
+include "constants.mc"
 include "room.mc"
 
 mexpr
@@ -27,7 +28,7 @@ let n = 200 in
 -- Speed is constant at -0.08 m/s. We output it as RPM, as that is the input
 -- from sensors (using wheel circumference ≈35cm).
 let speedMs = negf 0.08 in
-let speedRot = divf (mulf 60.0 speedMs) 0.35 in
+let speedRot = divf (mulf 60.0 speedMs) wheelCircumference in
 
 -- Car moves backwards along the x-axis at a constant speed
 let initPos = (1.7, 1.0) in

@@ -1,10 +1,9 @@
 include "math.mc"
 
 include "argparse.mc"
+include "constants.mc"
 include "shared.mc"
 include "room.mc"
-
-let wheelCircumference = 0.35
 
 let positionModel : RoomMap -> (Int, Dist [Float]) -> Int
                  -> Float -> Float -> Float -> Float -> Float -> [Float] =
@@ -44,7 +43,7 @@ let positionModel : RoomMap -> (Int, Dist [Float]) -> Int
 
     [x1, y1, newAngle]
   else
-    weight (negf inf);
+    weight 0.0;
     [x0, y0, angle]
 
 mexpr
@@ -151,11 +150,8 @@ loopFn state (lam i. lam state.
       infer (BPF {particles = 1000})
         (lam. positionModel roomMap state.posPriorTsv ts speed fld.1 rld.1 sld.1 srd.1)
     in
-    match distEmpiricalSamples posPosterior with (samples, _) in
-    match samples with [xValues, yValues] ++ _ in
-    printLn (join [
-      "Mean values: x = ", float2string (median cmpFloat floatAvg xValues),
-      ", y = ", float2string (median cmpFloat floatAvg yValues)]);
+    match expectedValuePosDist posPosterior with [x, y, _] in
+    printLn (join ["Expected value: x=", float2string x, ", y=", float2string y]);
 
     let posteriorTsv = (ts, posPosterior) in
 

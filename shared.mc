@@ -89,3 +89,18 @@ let median : all a. (a -> a -> Int) -> (a -> a -> a) -> [a] -> a =
     merge (get obs mid) (get obs (addi mid 1))
   else
     get obs (divi n 2)
+
+let expectedValuePosDist : Dist [Float] -> [Float] = lam posPosterior.
+  match distEmpiricalNormConst posPosterior with nc in
+  match distEmpiricalSamples posPosterior with (samples, weights) in
+  match
+    foldl
+      (lam acc : [Float]. lam t.
+        match acc with [xAcc, yAcc, angleAcc] in
+        match t with ([x, y, angle], w) in
+        let nw = subf (exp w) nc in
+        [addf xAcc (mulf nw x), addf yAcc (mulf nw y), addf angleAcc (mulf nw angle)])
+      [0.0, 0.0, 0.0] (zip samples weights)
+  with [x, y, angle] in
+  let n = int2float (length samples) in
+  [divf x n, divf y n, divf angle n]
