@@ -16,8 +16,13 @@ if len(sys.argv) > 1:
     # Use a heatmap with 1cm precision
     roomFile = sys.argv[1]
     im = Image.open(roomFile)
-    rows = im.height * 10
-    cols = im.width * 10
+    rows = im.height
+    cols = im.width
+    fig0, axs0 = plt.subplots(1)
+    axs0.imshow(im)
+    axs0.set_xlabel("x")
+    axs0.set_ylabel("y")
+    fig0.savefig(f"plots/0.png")
 
     # Read the printed distribution from stdin and produce one image per 1000
     # outputs (corresponding to one inference iteration).
@@ -29,13 +34,14 @@ if len(sys.argv) > 1:
             data = np.zeros([rows, cols])
             for line in inputs[i:i+1000]:
                 x, y, _ = line.split(" ")
-                x = int(100 * float(x))
-                y = int(100 * float(y))
+                x = int(10 * float(x))
+                y = int(10 * float(y))
                 data[y][x] += 1
+            axs.imshow(data)
+            axs.imshow(im, alpha=0.5)
             axs.set_xlabel("x")
             axs.set_ylabel("y")
-            axs.imshow(data)
-            fig.savefig(f"plots/{int(i/1000)}.png")
+            fig.savefig(f"plots/{int(i/1000)+1}.png")
             i = i + 1000
     else:
         print("Invalid number of input lines")
