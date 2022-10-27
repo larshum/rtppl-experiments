@@ -6,7 +6,13 @@ mexpr
 
 let options = {optionsDefault with recording = true, recordBufferOnly = true} in
 
-let room = readMap "maps/simple-map.txt" in
+let room =
+  let mapFilename =
+    if gti (length argv) 1 then get argv 1
+    else "maps/simple-map.txt"
+  in
+  readMap mapFilename
+in
 
 let inputs = [] in
 let outputs = [

@@ -7,11 +7,11 @@ $(TRACE_OUTPUTS): out $(TRACE_INPUTS)
 out: distance-model.mc argparse.mc buffers.mc
 	cppl $<
 
-$(TRACE_INPUTS): extra/producer
+$(TRACE_INPUTS): producer
 	./$<
 
-extra/producer: extra/producer.mc
+producer: producer.mc
 	mi compile $< --output $@
 
 clean:
-	rm -rf $(TRACE_INPUTS) $(TRACE_OUTPUTS) out out.mc extra/producer plots
+	rm -rf $(TRACE_INPUTS) $(TRACE_OUTPUTS) out out.mc producer plots
