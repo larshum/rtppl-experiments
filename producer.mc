@@ -22,17 +22,15 @@ let outputs = [
 initBuffers options inputs outputs;
 
 -- Number of time steps
-let n = 100 in
+let n = 200 in
 
 -- Speed is constant at -0.08 m/s. We output it as RPM, as that is the input
 -- from sensors (using wheel circumference ≈35cm).
 let speedMs = negf 0.08 in
 let speedRot = divf (mulf 60.0 speedMs) 0.35 in
 
--- Car will move backwards from (1.5, 1.0) to (0.7, 1.0). The left and right
--- distances are constantly 0.9, while the front goes from 0.4 to 1.2 and the
--- rear from 1.4 to 0.6.
-let initPos = (1.5, 1.0) in
+-- Car moves backwards along the x-axis at a constant speed
+let initPos = (1.7, 1.0) in
 let pos = ref initPos in
 
 writeData startTime (0, 0);

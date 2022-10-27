@@ -25,11 +25,12 @@ if len(sys.argv) > 1:
     im = Image.open(roomFile)
     rows = im.height
     cols = im.width
-    fig0, axs0 = plt.subplots(1)
-    axs0.imshow(im)
-    axs0.set_xlabel("x")
-    axs0.set_ylabel("y")
-    fig0.savefig(f"{target}/0.png")
+    fig, axs = plt.subplots(1)
+    axs.imshow(im)
+    axs.set_xlabel("x")
+    axs.set_ylabel("y")
+    fig.savefig(f"{target}/{chr(65)}.png")
+    plt.close()
 
     # Read the printed distribution from stdin and produce one image per 1000
     # outputs (corresponding to one inference iteration).
@@ -46,9 +47,8 @@ if len(sys.argv) > 1:
                 data[y][x] += 1
             axs.imshow(data)
             axs.imshow(im, alpha=0.5)
-            axs.set_xlabel("x")
-            axs.set_ylabel("y")
-            fig.savefig(f"{target}/{int(i/1000)+1}.png")
+            fig.savefig(f"{target}/{chr(int(i/1000)+66)}.png")
+            plt.close()
             i = i + 1000
     else:
         print("Invalid number of input lines")

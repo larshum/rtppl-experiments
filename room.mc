@@ -45,11 +45,11 @@ let roomDims : RoomMap -> (Int, Int) = lam m.
 -- map and back.
 let positionToCoord : (Float, Float) -> (Int, Int) = lam xy.
   match xy with (x, y) in
-  (floorfi (mulf x 10.0), floorfi (mulf y 10.0))
+  (floorfi (mulf y 10.0), floorfi (mulf x 10.0))
 
 let coordToPosition : (Int, Int) -> (Float, Float) = lam rowCol.
   match rowCol with (row, col) in
-  (divf (int2float row) 10.0, divf (int2float col) 10.0)
+  (divf (int2float col) 10.0, divf (int2float row) 10.0)
 
 -- Determine whether the coordinate of the map corresponding to a given
 -- position (x,y) is within bounds, i.e. whether it is not obstructed.
@@ -61,7 +61,7 @@ let withinRoomBounds : RoomMap -> (Float, Float) -> Bool = lam m. lam xy.
 -- or other obstructions in according to the map.
 let expectedDistanceAngle : RoomMap -> Float -> (Float, Float) -> Float =
   lam m. lam angle. lam xy.
-  let eps = 0.01 in
+  let eps = 0.05 in
   recursive let work = lam accDist. lam xy.
     if withinRoomBounds m xy then
       match xy with (x, y) in
