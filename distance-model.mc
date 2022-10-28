@@ -86,7 +86,7 @@ match readFloatData startTime with (t0, _) in
 loopFn state (lam i. lam state.
   -- Skip the delay if we are in replay mode, when we're debugging the code.
   (if options.replaying then ()
-  else sleepMs 100);
+  else sdelay 100);
 
   match state with {
     frontPriorTsv = (prevFrontTs, _),
@@ -124,12 +124,12 @@ loopFn state (lam i. lam state.
         subi (addi (muli s 1000000000) ns) t0
     in
 
-    let fld = median buffers.frontLeftDists in
-    let frd = median buffers.frontRightDists in
-    let rld = median buffers.rearLeftDists in
-    let rrd = median buffers.rearRightDists in
-    let ls = median buffers.leftSpeeds in
-    let rs = median buffers.rightSpeeds in
+    let fld = median cmpTsv tsvAvg buffers.frontLeftDists in
+    let frd = median cmpTsv tsvAvg buffers.frontRightDists in
+    let rld = median cmpTsv tsvAvg buffers.rearLeftDists in
+    let rrd = median cmpTsv tsvAvg buffers.rearRightDists in
+    let ls = median cmpTsv tsvAvg buffers.leftSpeeds in
+    let rs = median cmpTsv tsvAvg buffers.rightSpeeds in
 
     -- Assume no rotation - the speed of the car is just the average of the
     -- medians reported by each of the wheels.

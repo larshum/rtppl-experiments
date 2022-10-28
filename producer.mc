@@ -13,7 +13,7 @@ let backwardMovementConstantSpeed = lam room.
   let speedRPM = divf (mulf 60.0 speedMs) wheelCircumference in
 
   -- Car moves backwards along the x-axis at a constant speed
-  let initPos = (1.7, 1.0) in
+  let initPos = (1.75, 1.0) in
   let pos = ref initPos in
 
   writeData startTime (0, 0);

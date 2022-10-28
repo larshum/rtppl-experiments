@@ -98,9 +98,8 @@ let n = 10 in
 
 loopFn state (lam i. lam state.
   -- Skip the delay if we are in replay mode
-  -- TODO: Replace sleepMs with sdelay
-  (if options.replaying then ()
-  else sleepMs 100);
+  (if options.replaying then 0
+  else sdelay 100);
 
   match state with {
     posPriorTsv = (prevTs, _),
