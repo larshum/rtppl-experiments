@@ -1,4 +1,5 @@
 #include <time.h>
+#include <pthread.h>
 
 #include <caml/alloc.h>
 #include <caml/memory.h>
@@ -66,4 +67,18 @@ void clock_nanosleep_stub(value t) {
   clock_nanosleep_abstime(&ts);
 
   CAMLreturn0;
+}
+
+value set_priority_stub(value priority) {
+  CAMLparam1(priority);
+
+  int policy;
+  struct sched_param param;
+  pthread_getschedparam(pthread_self(), &policy, &param);
+  int old_priority = param.sched_priority;
+
+  param.sched_priority = Int_val(priority);
+  pthread_setschedparam(pthread_self(), policy, &param);
+
+  CAMLreturn(Val_int(old_priority));
 }
