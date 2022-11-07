@@ -8,7 +8,7 @@ $(TRACE_OUTPUTS): out $(TRACE_INPUTS)
 plot:
 	./out --print-pos-dist 11 | python3 scripts/pos-plot.py $(MAP_FILE).png
 
-out: position-model.mc argparse.mc buffers.mc room.mc
+out: position-model.mc argparse.mc buffers.mc room.mc shared.mc
 	cppl $<
 
 $(TRACE_INPUTS): producer

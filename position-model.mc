@@ -157,7 +157,7 @@ loopFn state (lam i. lam state.
       infer (BPF {particles = 1000})
         (lam. positionModel roomMap state.posPriorTsv ts speed fld rld sld srd)
     in
-    match expectedValuePosDist posPosterior with [x, y, _] in
+    match expectedValuePosDist posPosterior with (x, y) in
     printLn (join ["Expected value: x=", float2string x, ", y=", float2string y]);
 
     let posteriorTsv = (ts, posPosterior) in
