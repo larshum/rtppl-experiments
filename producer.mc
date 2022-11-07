@@ -7,13 +7,13 @@ let backwardMovementConstantSpeed = lam room.
   -- Number of time steps
   let n = 200 in
 
-  -- Speed is constant at -0.08 m/s. We output it as RPM, as that is the input
+  -- Speed is constant at -0.06 m/s. We output it as RPM, as that is the input
   -- from sensors.
-  let speedMs = negf 0.08 in
+  let speedMs = negf 0.06 in
   let speedRPM = divf (mulf 60.0 speedMs) wheelCircumference in
 
   -- Car moves backwards along the x-axis at a constant speed
-  let initPos = (1.75, 1.0) in
+  let initPos = (1.6, 1.0) in
   let pos = ref initPos in
 
   writeData startTime (0, 0);
@@ -31,16 +31,18 @@ let backwardMovementConstantSpeed = lam room.
 
     -- Compute the actual distances (rough estimates) in all four directions in
     -- centimeters, based on the provided map.
-    let frontDist = mulf (expectedDistanceFront room 0.0 newPos) 100.0 in
-    let rearDist = mulf (expectedDistanceRear room 0.0 newPos) 100.0 in
-    let leftDist = mulf (expectedDistanceLeft room 0.0 newPos) 100.0 in
-    let rightDist = mulf (expectedDistanceRight room 0.0 newPos) 100.0 in
+    let frontLeftDist = mulf (expectedDistanceFront room 0.0 newPos frontLeftOfs) 100.0 in
+    let frontRightDist = mulf (expectedDistanceFront room 0.0 newPos frontRightOfs) 100.0 in
+    let rearLeftDist = mulf (expectedDistanceRear room 0.0 newPos rearLeftOfs) 100.0 in
+    let rearRightDist = mulf (expectedDistanceRear room 0.0 newPos rearRightOfs) 100.0 in
+    let leftDist = mulf (expectedDistanceLeft room 0.0 newPos leftOfs) 100.0 in
+    let rightDist = mulf (expectedDistanceRight room 0.0 newPos rightOfs) 100.0 in
 
     -- Produce estimates to simulate the noise of the actual sensors.
-    let distFrontLeft = gaussianSample frontDist 0.02 in
-    let distFrontRight = gaussianSample frontDist 0.02 in
-    let distRearLeft = gaussianSample rearDist 0.02 in
-    let distRearRight = gaussianSample rearDist 0.02 in
+    let distFrontLeft = gaussianSample frontLeftDist 0.02 in
+    let distFrontRight = gaussianSample frontRightDist 0.02 in
+    let distRearLeft = gaussianSample rearLeftDist 0.02 in
+    let distRearRight = gaussianSample rearRightDist 0.02 in
     let distSideLeft = gaussianSample leftDist 0.02 in
     let distSideRight = gaussianSample rightDist 0.02 in
 
