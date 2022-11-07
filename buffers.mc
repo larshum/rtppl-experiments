@@ -103,14 +103,6 @@ lang RTPPLBuffers
   | RecordBufferOnly _ ->
     error "Cannot read data when recording in buffer-only mode"
 
-  sem readDistInputBuffer : Int -> BufferState -> Mode -> (BufferState, TimeStampedValue)
-  sem readDistInputBuffer id state =
-  | mode -> readInputBuffer (lam id. lvRead id) id state mode
-
-  sem readFloatInputBuffer : Int -> BufferState -> Mode -> (BufferState, TimeStampedValue)
-  sem readFloatInputBuffer id state =
-  | mode -> readInputBuffer (lam id. lvReadFloat id) id state mode
-
   sem writeOutputBuffer : Int -> TimeStampedValue -> BufferState -> Mode -> BufferState
   sem writeOutputBuffer id tsv state =
   | Default _ -> lvWrite id tsv; state
@@ -169,12 +161,12 @@ let readData = lam lvReadFn. lam id.
 
 let readFloatData : Int -> (Int, Float) = lam id.
   use RTPPLBuffers in
-  match readData lvRead id with (ts, value) in
+  match readData lvReadFloat id with (ts, value) in
   (ts, unsafeCoerce value)
 
 let readDistData : Int -> (Int, Dist Float) = lam id.
   use RTPPLBuffers in
-  match readData lvReadFloat id with (ts, value) in
+  match readData lvRead id with (ts, value) in
   (ts, unsafeCoerce value)
 
 let writeData : all a. Int -> (Int, a) -> () = lam id. lam outputData.
