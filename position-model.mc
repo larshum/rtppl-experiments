@@ -145,11 +145,17 @@ loopFn state (lam i. lam state.
     -- We assume the timestamps of all observations are the same
     let ts = fld.0 in
 
+    -- Translate sensor distances, which are given in centimeters, to meters.
+    let fld = divf fld.1 100.0 in
+    let rld = divf rld.1 100.0 in
+    let sld = divf sld.1 100.0 in
+    let srd = divf srd.1 100.0 in
+
     -- NOTE: for now, we only consider the observations of the left front and
     -- rear sensors, to keep things simple(r).
     let posPosterior =
       infer (BPF {particles = 1000})
-        (lam. positionModel roomMap state.posPriorTsv ts speed fld.1 rld.1 sld.1 srd.1)
+        (lam. positionModel roomMap state.posPriorTsv ts speed fld rld sld srd)
     in
     match expectedValuePosDist posPosterior with [x, y, _] in
     printLn (join ["Expected value: x=", float2string x, ", y=", float2string y]);

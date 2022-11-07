@@ -29,12 +29,12 @@ let backwardMovementConstantSpeed = lam room.
     let newPos = (addf x0 (mulf speedMs 0.1), y0) in
     modref pos newPos;
 
-    -- Compute the actual distances in all four directions, based on the provided
-    -- map.
-    let frontDist = expectedDistanceFront room 0.0 newPos in
-    let rearDist = expectedDistanceRear room 0.0 newPos in
-    let leftDist = expectedDistanceLeft room 0.0 newPos in
-    let rightDist = expectedDistanceRight room 0.0 newPos in
+    -- Compute the actual distances (rough estimates) in all four directions in
+    -- centimeters, based on the provided map.
+    let frontDist = mulf (expectedDistanceFront room 0.0 newPos) 100.0 in
+    let rearDist = mulf (expectedDistanceRear room 0.0 newPos) 100.0 in
+    let leftDist = mulf (expectedDistanceLeft room 0.0 newPos) 100.0 in
+    let rightDist = mulf (expectedDistanceRight room 0.0 newPos) 100.0 in
 
     -- Produce estimates to simulate the noise of the actual sensors.
     let distFrontLeft = gaussianSample frontDist 0.02 in
