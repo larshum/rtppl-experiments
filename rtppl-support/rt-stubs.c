@@ -11,12 +11,27 @@
 #include <mach/clock.h>
 #endif
 
+int clock_get_timespec(struct timespec *ts) {
+#ifdef __MACH__
+  clock_serv_t cclock;
+  mach_timespec_t mts;
+  host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
+  clock_get_time(cclock, &mts);
+  mach_port_deallocate(mach_task_self(), cclock);
+  ts->tv_sec = mts.tv_sec;
+  ts->tv_nsec = mts.tv_nsec;
+  return 0;
+#else
+  return clock_gettime(CLOCK_MONOTONIC, ts);
+#endif
+}
+
 value clock_get_time_stub() {
   CAMLparam0();
   CAMLlocal1(out);
 
   struct timespec ts;
-  clock_gettime(CLOCK_MONOTONIC, &ts);
+  clock_get_timespec(&ts);
 
   out = caml_alloc(2, 0);
   Store_field(out, 0, Val_int(ts.tv_sec));
@@ -47,7 +62,7 @@ inline void timespec_monodiff_rml(struct timespec *ts_out, const struct timespec
 inline int clock_nanosleep_abstime(const struct timespec *req) {
 #ifdef __MACH__
   struct timespec ts_delta;
-  int retval = clock_gettime(CLOCK_MONOTONIC, &ts_delta);
+  int retval = clock_get_timespec(&ts_delta);
   if (retval == 0) {
     timespec_monodiff_rml(&ts_delta, req);
     retval = nanosleep(&ts_delta, NULL);
@@ -62,8 +77,8 @@ void clock_nanosleep_stub(value t) {
   CAMLparam1(t);
 
   struct timespec ts;
-  ts.tv_sec = Int_val(Field(t, 0));
-  ts.tv_nsec = Int_val(Field(t, 1));
+  ts.tv_sec = Long_val(Field(t, 0));
+  ts.tv_nsec = Long_val(Field(t, 1));
   clock_nanosleep_abstime(&ts);
 
   CAMLreturn0;
