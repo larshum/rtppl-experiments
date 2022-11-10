@@ -10,6 +10,10 @@ let positionModel : RoomMap -> (Int, Dist [Float]) -> Int -> Float -> Float
   lam m. lam posPriorTsv. lam t1. lam speed. lam frontLeftObs. lam frontRightObs.
   lam rearLeftObs. lam rearRightObs. lam leftDistObs. lam rightDistObs.
 
+  -- Compute the maximum possible distance (the diagonal of the room)
+  match coordToPosition (roomDims m) with (maxX, maxY) in
+  let maxDist = sqrt (addf (mulf maxX maxX) (mulf maxY maxY)) in
+
   -- Get an estimate of the previous position of the car.
   match posPriorTsv with (t0, posPrior) in
   match assume posPrior with [x0, y0, angle] in
@@ -35,39 +39,47 @@ let positionModel : RoomMap -> (Int, Dist [Float]) -> Int -> Float -> Float
     let y1 = addf y0 (mulf dist (sin newAngle)) in
     let pos = (x1, y1) in
 
-    -- Compute the likelihood of making the observations given the assumed
-    -- position (including angle) of the car. As the goal of the model is to
-    -- estimate the position (of the center) of the car, we take the offsets of
-    -- the individual sensors into account in the model.
-    (if ltf frontLeftObs maxLongRangeSensorDist then
+    -- Check whether the position we presumably moved to is also within bounds.
+    -- Otherwise we could not have moved there.
+    (if withinRoomBounds m pos then
+      -- If an observed distance is beyond the maximum range of the sensor, we
+      -- only know that the actual distance is anything between that maximum
+      -- range and the maximum distance we can observe in the room.
+      let obs = lam maxRange. lam obsDist.
+        if ltf obsDist maxRange then obsDist
+        else assume (Uniform maxRange maxDist)
+      in
+
+      -- Compute the likelihood of making the observations given the assumed
+      -- position (including angle) of the car. As the goal of the model is to
+      -- estimate the position (of the center) of the car, we take the offsets of
+      -- the individual sensors into account in the model.
+
+      let frontLeftObs = obs maxLongRangeSensorDist frontLeftObs in
       let frontLeftDist = expectedDistanceFront m newAngle pos frontLeftOfs in
-      observe frontLeftObs (Gaussian frontLeftDist 0.02)
-    else ());
+      observe frontLeftObs (Gaussian frontLeftDist 0.02);
 
-    (if ltf frontRightObs maxLongRangeSensorDist then
+      let frontRightObs = obs maxLongRangeSensorDist frontRightObs in
       let frontRightDist = expectedDistanceFront m newAngle pos frontRightOfs in
-      observe frontRightObs (Gaussian frontRightDist 0.02)
-    else ());
+      observe frontRightObs (Gaussian frontRightDist 0.02);
 
-    (if ltf rearLeftObs maxLongRangeSensorDist then
+      let rearLeftObs = obs maxLongRangeSensorDist rearLeftObs in
       let rearLeftDist = expectedDistanceRear m newAngle pos rearLeftOfs in
-      observe rearLeftObs (Gaussian rearLeftDist 0.02)
-    else ());
+      observe rearLeftObs (Gaussian rearLeftDist 0.02);
 
-    (if ltf rearRightObs maxLongRangeSensorDist then
+      let rearRightObs = obs maxLongRangeSensorDist rearRightObs in
       let rearRightDist = expectedDistanceRear m newAngle pos rearRightOfs in
-      observe rearRightObs (Gaussian rearRightDist 0.02)
-    else ());
+      observe rearRightObs (Gaussian rearRightDist 0.02);
 
-    (if ltf leftDistObs maxShortRangeSensorDist then
+      let leftDistObs = obs maxShortRangeSensorDist leftDistObs in
       let leftDist = expectedDistanceLeft m newAngle pos leftOfs in
-      observe leftDistObs (Gaussian leftDist 0.01)
-    else ());
+      observe leftDistObs (Gaussian leftDist 0.01);
 
-    (if ltf rightDistObs maxShortRangeSensorDist then
+      let rightDistObs = obs maxShortRangeSensorDist rightDistObs in
       let rightDist = expectedDistanceRight m newAngle pos rightOfs in
       observe rightDistObs (Gaussian rightDist 0.01)
-    else ());
+    else
+      weight (negf inf));
 
     [x1, y1, newAngle]
   else
