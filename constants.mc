@@ -1,6 +1,9 @@
 
 let wheelCircumference = 0.35
 
+let maxLongRangeSensorDist = 4.0
+let maxShortRangeSensorDist = 2.0
+
 -- Sensor offsets from a hypothetical center point of the car.
 let frontLeftOfs = (negf 0.05, 0.235)
 let frontRightOfs = (0.05, 0.235)

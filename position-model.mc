@@ -24,7 +24,9 @@ let positionModel : RoomMap -> (Int, Dist [Float]) -> Int -> Float -> Float
 
     -- Compute difference between timestamps and convert difference to a time
     -- in seconds.
-    let timeDiff = divf (int2float (subi t1 t0)) 1000000000.0 in
+    let timeDiff =
+      if gti t0 t1 then 0.0
+      else divf (int2float (subi t1 t0)) 1000000000.0 in
 
     -- Estimate the current position given speed and time difference, with some
     -- uncertainty.
@@ -37,23 +39,35 @@ let positionModel : RoomMap -> (Int, Dist [Float]) -> Int -> Float -> Float
     -- position (including angle) of the car. As the goal of the model is to
     -- estimate the position (of the center) of the car, we take the offsets of
     -- the individual sensors into account in the model.
-    let frontLeftDist = expectedDistanceFront m newAngle pos frontLeftOfs in
-    observe frontLeftObs (Gaussian frontLeftDist 0.02);
+    (if ltf frontLeftObs maxLongRangeSensorDist then
+      let frontLeftDist = expectedDistanceFront m newAngle pos frontLeftOfs in
+      observe frontLeftObs (Gaussian frontLeftDist 0.02)
+    else ());
 
-    let frontRightDist = expectedDistanceFront m newAngle pos frontRightOfs in
-    observe frontRightObs (Gaussian frontRightDist 0.02);
+    (if ltf frontRightObs maxLongRangeSensorDist then
+      let frontRightDist = expectedDistanceFront m newAngle pos frontRightOfs in
+      observe frontRightObs (Gaussian frontRightDist 0.02)
+    else ());
 
-    let rearLeftDist = expectedDistanceRear m newAngle pos rearLeftOfs in
-    observe rearLeftObs (Gaussian rearLeftDist 0.02);
+    (if ltf rearLeftObs maxLongRangeSensorDist then
+      let rearLeftDist = expectedDistanceRear m newAngle pos rearLeftOfs in
+      observe rearLeftObs (Gaussian rearLeftDist 0.02)
+    else ());
 
-    let rearRightDist = expectedDistanceRear m newAngle pos rearRightOfs in
-    observe rearRightObs (Gaussian rearRightDist 0.02);
+    (if ltf rearRightObs maxLongRangeSensorDist then
+      let rearRightDist = expectedDistanceRear m newAngle pos rearRightOfs in
+      observe rearRightObs (Gaussian rearRightDist 0.02)
+    else ());
 
-    let leftDist = expectedDistanceLeft m newAngle pos leftOfs in
-    observe leftDistObs (Gaussian leftDist 0.01);
+    (if ltf leftDistObs maxShortRangeSensorDist then
+      let leftDist = expectedDistanceLeft m newAngle pos leftOfs in
+      observe leftDistObs (Gaussian leftDist 0.01)
+    else ());
 
-    let rightDist = expectedDistanceRight m newAngle pos rightOfs in
-    observe rightDistObs (Gaussian rightDist 0.01);
+    (if ltf rightDistObs maxShortRangeSensorDist then
+      let rightDist = expectedDistanceRight m newAngle pos rightOfs in
+      observe rightDistObs (Gaussian rightDist 0.01)
+    else ());
 
     [x1, y1, newAngle]
   else
@@ -165,14 +179,13 @@ loopFn state (lam i. lam state.
     let sld = divf sld.1 100.0 in
     let srd = divf srd.1 100.0 in
 
-    -- NOTE: for now, we only consider the observations of the left front and
-    -- rear sensors, to keep things simple(r).
     let posPosterior =
       infer (BPF {particles = 1000})
         (lam. positionModel roomMap state.posPriorTsv ts speed fld frd rld rrd sld srd)
     in
     match expectedValuePosDist posPosterior with (x, y) in
     printLn (join ["Expected value: x=", float2string x, ", y=", float2string y]);
+    flushStdout ();
 
     let posteriorTsv = (ts, posPosterior) in
 
