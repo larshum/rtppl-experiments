@@ -34,10 +34,12 @@ let positionModel : RoomMap -> (Int, Dist [Float]) -> Int -> Float -> Float
 
     -- Estimate the current position given speed and time difference, with some
     -- uncertainty.
-    let dist = assume (Gaussian (mulf speed timeDiff) 0.02) in
-    let x1 = addf x0 (mulf dist (cos newAngle)) in
-    let y1 = addf y0 (mulf dist (sin newAngle)) in
-    let pos = (x1, y1) in
+    let pos =
+      let distTravelled = assume (Gaussian (mulf speed timeDiff) 0.2) in
+      let x1 = addf x0 (mulf distTravelled (cos newAngle)) in
+      let y1 = addf y0 (mulf distTravelled (sin newAngle)) in
+      (x1, y1)
+    in
 
     -- Check whether the position we presumably moved to is also within bounds.
     -- Otherwise we could not have moved there.
@@ -57,31 +59,31 @@ let positionModel : RoomMap -> (Int, Dist [Float]) -> Int -> Float -> Float
 
       let frontLeftObs = obs maxLongRangeSensorDist frontLeftObs in
       let frontLeftDist = expectedDistanceFront m newAngle pos frontLeftOfs in
-      observe frontLeftObs (Gaussian frontLeftDist 0.02);
+      observe frontLeftObs (Gaussian frontLeftDist 0.1);
 
       let frontRightObs = obs maxLongRangeSensorDist frontRightObs in
       let frontRightDist = expectedDistanceFront m newAngle pos frontRightOfs in
-      observe frontRightObs (Gaussian frontRightDist 0.02);
+      observe frontRightObs (Gaussian frontRightDist 0.1);
 
       let rearLeftObs = obs maxLongRangeSensorDist rearLeftObs in
       let rearLeftDist = expectedDistanceRear m newAngle pos rearLeftOfs in
-      observe rearLeftObs (Gaussian rearLeftDist 0.02);
+      observe rearLeftObs (Gaussian rearLeftDist 0.1);
 
       let rearRightObs = obs maxLongRangeSensorDist rearRightObs in
       let rearRightDist = expectedDistanceRear m newAngle pos rearRightOfs in
-      observe rearRightObs (Gaussian rearRightDist 0.02);
+      observe rearRightObs (Gaussian rearRightDist 0.1);
 
       let leftDistObs = obs maxShortRangeSensorDist leftDistObs in
       let leftDist = expectedDistanceLeft m newAngle pos leftOfs in
-      observe leftDistObs (Gaussian leftDist 0.01);
+      observe leftDistObs (Gaussian leftDist 0.05);
 
       let rightDistObs = obs maxShortRangeSensorDist rightDistObs in
       let rightDist = expectedDistanceRight m newAngle pos rightOfs in
-      observe rightDistObs (Gaussian rightDist 0.01)
+      observe rightDistObs (Gaussian rightDist 0.05)
     else
       weight (negf inf));
 
-    [x1, y1, newAngle]
+    [pos.0, pos.1, newAngle]
   else
     weight (negf inf);
     [x0, y0, angle]
@@ -183,19 +185,19 @@ loopFn state (lam i. lam state.
     -- We assume the timestamps of all observations are the same
     let ts = fld.0 in
 
-    -- Translate sensor distances, which are given in centimeters, to meters.
-    let fld = divf fld.1 100.0 in
-    let frd = divf frd.1 100.0 in
-    let rld = divf rld.1 100.0 in
-    let rrd = divf rrd.1 100.0 in
-    let sld = divf sld.1 100.0 in
-    let srd = divf srd.1 100.0 in
+    -- Ignore the individual timestamps in the model code
+    let fld = fld.1 in
+    let frd = frd.1 in
+    let rld = rld.1 in
+    let rrd = rrd.1 in
+    let sld = sld.1 in
+    let srd = srd.1 in
 
     let posPosterior =
       infer (BPF {particles = 1000})
         (lam. positionModel roomMap state.posPriorTsv ts speed fld frd rld rrd sld srd)
     in
-    match expectedValuePosDist posPosterior with (x, y) in
+    match expectedValuePosDist posPosterior with [x, y, _] in
     printLn (join ["Expected value: x=", float2string x, ", y=", float2string y]);
     flushStdout ();
 
