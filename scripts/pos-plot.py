@@ -10,6 +10,13 @@ import math
 import os
 import sys
 
+def figid(x, n):
+    c = chr(int(x % 26) + 65)
+    if n > 1:
+        return f"{figid(int(x / 26), int(n / 26))}{c}"
+    else:
+        return f"{c}"
+
 if not os.path.exists("plots/"):
     os.mkdir("plots")
 
@@ -29,7 +36,7 @@ if len(sys.argv) > 1:
     axs.imshow(im)
     axs.set_xlabel("x")
     axs.set_ylabel("y")
-    fig.savefig(f"{target}/{chr(65)}.png")
+    fig.savefig(f"{target}/0.png")
     plt.close()
 
     # Read the printed distribution from stdin and produce one image per 1000
@@ -37,6 +44,7 @@ if len(sys.argv) > 1:
     inputs = [line for line in sys.stdin.readlines()]
     if len(inputs) % 1000 == 0:
         i = 0
+        n = int(len(inputs) / 1000)
         while i < len(inputs):
             fig, axs = plt.subplots(1)
             data = np.zeros([rows, cols])
@@ -50,7 +58,7 @@ if len(sys.argv) > 1:
             axs.imshow(im, alpha=0.5)
             axs.set_xlabel("x")
             axs.set_ylabel("y")
-            fig.savefig(f"{target}/{chr(int(i/1000)+66)}.png")
+            fig.savefig(f"{target}/{figid(int(i/1000), n)}.png")
             plt.close()
             i = i + 1000
     else:
