@@ -17,6 +17,8 @@ def figid(x, n):
     else:
         return f"{c}"
 
+batchsz = 1000
+
 if not os.path.exists("plots/"):
     os.mkdir("plots")
 
@@ -39,28 +41,28 @@ if len(sys.argv) > 1:
     fig.savefig(f"{target}/0.png")
     plt.close()
 
-    # Read the printed distribution from stdin and produce one image per 1000
+    # Read the printed distribution from stdin and produce one image per n
     # outputs (corresponding to one inference iteration).
     inputs = [line for line in sys.stdin.readlines()]
-    if len(inputs) % 1000 == 0:
+    if len(inputs) % batchsz == 0:
         i = 0
-        n = int(len(inputs) / 1000)
+        n = int(len(inputs) / batchsz)
         while i < len(inputs):
             fig, axs = plt.subplots(1)
             data = np.zeros([rows, cols])
-            for line in inputs[i:i+1000]:
-                x, y, _ = line.split(" ")
+            for line in inputs[i:i+batchsz]:
+                x, y, w = line.split(" ")
                 x = int(10 * float(x))
                 y = int(10 * float(y))
                 if x >= 0 and x < len(data[0]) and y >= 0 and y < len(data):
-                    data[y][x] += 1
+                    data[y][x] += math.exp(float(w))
             axs.imshow(data)
             axs.imshow(im, alpha=0.5)
             axs.set_xlabel("x")
             axs.set_ylabel("y")
-            fig.savefig(f"{target}/{figid(int(i/1000), n)}.png")
+            fig.savefig(f"{target}/{figid(int(i/batchsz), n)}.png")
             plt.close()
-            i = i + 1000
+            i = i + batchsz
     else:
         print("Invalid number of input lines")
 else:
