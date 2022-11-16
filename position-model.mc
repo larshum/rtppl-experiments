@@ -28,15 +28,10 @@ let estimatePositionAt : (Float, Float) -> Float -> Float -> Int -> Int -> (Floa
 let positionModel : RoomMap -> (Int, Dist [Float]) -> Int -> Float -> FloatTsv
                  -> FloatTsv -> FloatTsv -> FloatTsv -> FloatTsv -> FloatTsv
                  -> [Float] =
-  lam m. lam posPriorTsv. lam t1. lam speed. lam frontLeft. lam frontRight.
+  lam m. lam t0. lam posPrior. lam t1. lam speed. lam frontLeft. lam frontRight.
   lam rearLeft. lam rearRight. lam leftSide. lam rightSide.
 
-  -- Compute the maximum possible distance (the diagonal of the room)
-  match coordToPosition (roomDims m) with (maxX, maxY) in
-  let maxDist = sqrt (addf (mulf maxX maxX) (mulf maxY maxY)) in
-
   -- Get an estimate of the previous position of the car.
-  match posPriorTsv with (t0, posPrior) in
   match assume posPrior with [x0, y0, angle] in
   let initPos = (x0, y0) in
 
@@ -178,7 +173,7 @@ loopFn state (lam i. lam state.
   else sdelay 100);
 
   match state with {
-    posPriorTsv = (prevTs, _),
+    posPriorTsv = (prevTs, posPrior),
     buffers = buffers
   } in
 
@@ -225,7 +220,7 @@ loopFn state (lam i. lam state.
 
     let posPosterior =
       infer (BPF {particles = 1000})
-        (lam. positionModel roomMap state.posPriorTsv t1 speedObs fld frd rld rrd sld srd)
+        (lam. positionModel roomMap prevTs posPrior t1 speedObs fld frd rld rrd sld srd)
     in
     match expectedValuePosDist posPosterior with [x, y, _] in
     printLn (join ["Expected value: x=", float2string x, ", y=", float2string y]);
