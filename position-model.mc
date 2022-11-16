@@ -47,8 +47,8 @@ let positionModel : RoomMap -> (Int, Dist [Float]) -> Int -> Float -> FloatTsv
 
     -- TODO: How do we accurately estimate the angle? For now, we assume it is
     -- a fixed value.
-    --let newAngle = assume (Gaussian angle (divf pi 4.0)) in
-    let newAngle = pi in
+    let newAngle = assume (Gaussian angle (divf pi 4.0)) in
+    --let newAngle = pi in
 
     -- Estimate the current position given speed and time difference, with some
     -- uncertainty.
@@ -115,9 +115,11 @@ let positionModel : RoomMap -> (Int, Dist [Float]) -> Int -> Float -> FloatTsv
     else
       weight (negf inf));
 
+    resample;
     [pos.0, pos.1, newAngle]
   else
     weight (negf inf);
+    resample;
     [x0, y0, angle]
 
 mexpr
