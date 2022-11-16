@@ -1,14 +1,37 @@
 include "math.mc"
+include "ext/dist-ext.mc"
 
 include "argparse.mc"
 include "constants.mc"
 include "shared.mc"
 include "room.mc"
 
-let positionModel : RoomMap -> (Int, Dist [Float]) -> Int -> Float -> Float
-                 -> Float -> Float -> Float -> Float -> Float -> [Float] =
-  lam m. lam posPriorTsv. lam t1. lam speed. lam frontLeftObs. lam frontRightObs.
-  lam rearLeftObs. lam rearRightObs. lam leftDistObs. lam rightDistObs.
+type FloatTsv = (Int, Float)
+
+let estimatePositionAt : (Float, Float) -> Float -> Float -> Int -> Int -> (Float, Float) =
+  lam initialPos. lam speed. lam angle. lam t0. lam t1.
+  match initialPos with (x0, y0) in
+
+  -- Compute difference between timestamps and convert difference to a time
+  -- in seconds.
+  let timeDiff =
+    if eqi t0 0 then 0.0
+    else divf (int2float (subi t1 t0)) 1000000000.0
+  in
+
+  -- Estimate the distance travelled based on the estimated speed and the time
+  -- difference. Given the angle in which the car is travelling, we use this to
+  -- estimate the new position of the car.
+  let distEst = mulf speed timeDiff in
+  let distForward = assume (Gaussian distEst (mulf distEst 0.1)) in
+  ( addf x0 (mulf distForward (cos angle))
+  , addf y0 (mulf distForward (sin angle)) )
+
+let positionModel : RoomMap -> (Int, Dist [Float]) -> Int -> Float -> FloatTsv
+                 -> FloatTsv -> FloatTsv -> FloatTsv -> FloatTsv -> FloatTsv
+                 -> [Float] =
+  lam m. lam posPriorTsv. lam t1. lam speed. lam frontLeft. lam frontRight.
+  lam rearLeft. lam rearRight. lam leftSide. lam rightSide.
 
   -- Compute the maximum possible distance (the diagonal of the room)
   match coordToPosition (roomDims m) with (maxX, maxY) in
@@ -17,32 +40,25 @@ let positionModel : RoomMap -> (Int, Dist [Float]) -> Int -> Float -> Float
   -- Get an estimate of the previous position of the car.
   match posPriorTsv with (t0, posPrior) in
   match assume posPrior with [x0, y0, angle] in
+  let initPos = (x0, y0) in
 
-  -- NOTE: we assume all observations have the same timestamp
-  if withinRoomBounds m (x0, y0) then
+  if withinRoomBounds m initPos then
 
-    -- NOTE: Perhaps we could improve this by considering the distance the
-    -- wheels have travelled (if turning left, the right wheel should have
-    -- moved a longer distance, for example).
-    let newAngle = assume (Gaussian angle pi) in
+    -- There is some degree of uncertainty in what the actual speed is.
+    let speed = assume (Gaussian speed 0.025) in
 
-    -- Compute difference between timestamps and convert difference to a time
-    -- in seconds.
-    let timeDiff =
-      if gti t0 t1 then 0.0
-      else divf (int2float (subi t1 t0)) 1000000000.0 in
+    -- TODO: How do we accurately estimate the angle? For now, we assume it is
+    -- a fixed value.
+    --let newAngle = assume (Gaussian angle (divf pi 4.0)) in
+    let newAngle = pi in
 
     -- Estimate the current position given speed and time difference, with some
     -- uncertainty.
-    let pos =
-      let distTravelled = assume (Gaussian (mulf speed timeDiff) 0.2) in
-      let x1 = addf x0 (mulf distTravelled (cos newAngle)) in
-      let y1 = addf y0 (mulf distTravelled (sin newAngle)) in
-      (x1, y1)
-    in
+    let pos = estimatePositionAt initPos speed newAngle t0 t1 in
 
     -- Check whether the position we presumably moved to is also within bounds.
-    -- Otherwise we could not have moved there.
+    -- If it is not, we could not have moved there, so we weight with negative
+    -- infinity.
     (if withinRoomBounds m pos then
       -- If an observed distance is beyond the maximum range of the sensor, we
       -- only know that the actual distance is anything between that maximum
@@ -52,34 +68,57 @@ let positionModel : RoomMap -> (Int, Dist [Float]) -> Int -> Float -> Float
         else assume (Uniform maxRange maxDist)
       in
 
-      -- Compute the likelihood of making the observations given the assumed
-      -- position (including angle) of the car. As the goal of the model is to
-      -- estimate the position (of the center) of the car, we take the offsets of
-      -- the individual sensors into account in the model.
-
+      -- Compute the likelihood of making the provided observations at the
+      -- estimated position of the car at their respective timestamps. The
+      -- offsets of the sensors are taken into account when making these
+      -- observations, as we seek to estimate the position relative to a
+      -- central point of the car.
+      -- TODO: The distance sensor values need to have timestamps relative to
+      -- the previous release (t0), so that we can compute what they _should_
+      -- have been.
+      match frontLeft with (tsFl, frontLeftObs) in
+      --let pos = estimatePositionAt initPos speed newAngle t0 tsFl in
       let frontLeftObs = obs maxLongRangeSensorDist frontLeftObs in
       let frontLeftDist = expectedDistanceFront m newAngle pos frontLeftOfs in
       observe frontLeftObs (Gaussian frontLeftDist 0.1);
 
+      match frontRight with (tsFr, frontRightObs) in
+      --let pos = estimatePositionAt initPos speed newAngle t0 tsFr in
       let frontRightObs = obs maxLongRangeSensorDist frontRightObs in
       let frontRightDist = expectedDistanceFront m newAngle pos frontRightOfs in
       observe frontRightObs (Gaussian frontRightDist 0.1);
 
+      match rearLeft with (tsRl, rearLeftObs) in
+      --let pos = estimatePositionAt initPos speed newAngle t0 tsRl in
       let rearLeftObs = obs maxLongRangeSensorDist rearLeftObs in
       let rearLeftDist = expectedDistanceRear m newAngle pos rearLeftOfs in
       observe rearLeftObs (Gaussian rearLeftDist 0.1);
 
+      match rearRight with (tsRr, rearRightObs) in
+      --let pos = estimatePositionAt initPos speed newAngle t0 tsRr in
       let rearRightObs = obs maxLongRangeSensorDist rearRightObs in
       let rearRightDist = expectedDistanceRear m newAngle pos rearRightOfs in
       observe rearRightObs (Gaussian rearRightDist 0.1);
 
-      let leftDistObs = obs maxShortRangeSensorDist leftDistObs in
-      let leftDist = expectedDistanceLeft m newAngle pos leftOfs in
-      observe leftDistObs (Gaussian leftDist 0.05);
+      match leftSide with (tsLeft, leftSideObs) in
+      --let pos = estimatePositionAt initPos speed newAngle t0 tsLeft in
+      let leftSideObs = obs maxShortRangeSensorDist leftSideObs in
+      let leftSide = expectedDistanceLeft m newAngle pos leftOfs in
+      observe leftSideObs (Gaussian leftSide 0.05);
 
-      let rightDistObs = obs maxShortRangeSensorDist rightDistObs in
-      let rightDist = expectedDistanceRight m newAngle pos rightOfs in
-      observe rightDistObs (Gaussian rightDist 0.05)
+      match rightSide with (tsRight, rightSideObs) in
+      --let pos = estimatePositionAt initPos speed newAngle t0 tsRight in
+      let rightSideObs = obs maxShortRangeSensorDist rightSideObs in
+      let rightSide = expectedDistanceRight m newAngle pos rightOfs in
+      observe rightSideObs (Gaussian rightSide 0.05);
+
+      printLn (join ["prior pos: ", float2string x0, " ", float2string y0]);
+      printLn (join ["| ", float2string frontLeftObs, " ", float2string frontLeftDist, " ", float2string (gaussianLogPdf frontLeftDist 0.1 frontLeftObs)]);
+      printLn (join ["| ", float2string frontRightObs, " ", float2string frontRightDist, " ", float2string (gaussianLogPdf frontRightDist 0.1 frontRightObs)]);
+      printLn (join ["| ", float2string rearLeftObs, " ", float2string rearLeftDist, " ", float2string (gaussianLogPdf rearLeftDist 0.1 rearLeftObs)]);
+      printLn (join ["| ", float2string rearRightObs, " ", float2string rearRightDist, " ", float2string (gaussianLogPdf rearRightDist 0.1 rearRightObs)]);
+      printLn (join ["| ", float2string leftSideObs, " ", float2string leftSide, " ", float2string (gaussianLogPdf leftSide 0.05 leftSideObs)]);
+      printLn (join ["| ", float2string rightSideObs, " ", float2string rightSide, " ", float2string (gaussianLogPdf rightSide 0.05 rightSideObs)])
     else
       weight (negf inf));
 
@@ -122,6 +161,7 @@ match readFloatData startTime with (t0, _) in
 -- We get the maximum x- and y-values within the map by converting its
 -- dimensions to a position.
 match coordToPosition (roomDims roomMap) with (maxX, maxY) in
+printLn (join ["Room dimensions: ", float2string maxX, " ", float2string maxY]);
 
 let positionPrior =
   distCombineIndependent
@@ -130,11 +170,12 @@ let positionPrior =
     , Uniform 0.0 (mulf 2.0 pi) ] -- prior for the angle (direction of the car)
 in
 let state = {
-  posPriorTsv = (t0, positionPrior),
+  posPriorTsv = (0, positionPrior),
   buffers = emptyBuffers ()
 } in
 
-let n = 10 in
+let n = 9 in
+let period = 100 in
 
 loopFn state (lam i. lam state.
   -- Skip the delay if we are in replay mode
@@ -177,31 +218,25 @@ loopFn state (lam i. lam state.
     let ls = median cmpTsv tsvAvg buffers.leftSpeeds in
     let rs = median cmpTsv tsvAvg buffers.rightSpeeds in
 
-    -- Naively assume that the speed is the average of the median speed of the
-    -- two wheels.
+    -- NOTE(larshum, 2022-11-14): We assume that the observed speed is constant
+    -- during the whole period. It is computed as the average of the median
+    -- speed of the observations of the left and right wheels.
     let speedRPM = divf (addf ls.1 rs.1) 2.0 in
-    let speed = divf (mulf speedRPM wheelCircumference) 60.0 in
+    let speedObs = divf (mulf speedRPM wheelCircumference) 60.0 in
 
-    -- We assume the timestamps of all observations are the same
-    let ts = fld.0 in
-
-    -- Ignore the individual timestamps in the model code
-    let fld = fld.1 in
-    let frd = frd.1 in
-    let rld = rld.1 in
-    let rrd = rrd.1 in
-    let sld = sld.1 in
-    let srd = srd.1 in
+    -- Compute the next timestamp based on the timestamp of the prior
+    -- estimation and the period.
+    let t1 = addi prevTs (muli n (muli period 1000000)) in
 
     let posPosterior =
       infer (BPF {particles = 1000})
-        (lam. positionModel roomMap state.posPriorTsv ts speed fld frd rld rrd sld srd)
+        (lam. positionModel roomMap state.posPriorTsv t1 speedObs fld frd rld rrd sld srd)
     in
     match expectedValuePosDist posPosterior with [x, y, _] in
     printLn (join ["Expected value: x=", float2string x, ", y=", float2string y]);
     flushStdout ();
 
-    let posteriorTsv = (ts, posPosterior) in
+    let posteriorTsv = (t1, posPosterior) in
 
     writeData obsPosition posteriorTsv;
 

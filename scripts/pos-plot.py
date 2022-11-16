@@ -51,7 +51,8 @@ if len(sys.argv) > 1:
             fig, axs = plt.subplots(1)
             data = np.zeros([rows, cols])
             for line in inputs[i:i+batchsz]:
-                x, y, w = line.split(" ")
+                # NOTE: we do not consider the angle when plotting
+                x, y, _, w = line.split(" ")
                 x = int(10 * float(x))
                 y = int(10 * float(y))
                 if x >= 0 and x < len(data[0]) and y >= 0 and y < len(data):

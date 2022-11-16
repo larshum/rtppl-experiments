@@ -37,10 +37,8 @@ let printFloatDistributionBuffer : Int -> () = lam id.
 
 let printPositionDistributionBuffer : Int -> () = lam id.
   let printPosSample : [Float] -> String = lam sample.
-    -- NOTE: the angle is used when estimating, but it is not very interesting
-    -- in the end.
-    match sample with [x, y, _] in
-    join [float2string x, " ", float2string y]
+    match sample with [x, y, angle] in
+    join [float2string x, " ", float2string y, " ", float2string angle]
   in
   let buf = _loadBuffer id in
   let printTsv = lam tsv.
@@ -73,9 +71,7 @@ let cmpTsv : (Int, Float) -> (Int, Float) -> Int = lam l. lam r.
   else 0
 
 let tsvAvg : (Int, Float) -> (Int, Float) -> (Int, Float) = lam l. lam r.
-  match l with (tsl, vl) in
-  match r with (tsr, vr) in
-  (mini tsl tsr, floatAvg vl vr)
+  error "Cannot compute average timestamp"
 
 -- Finds the median among a given sequence of observations. If there is an even
 -- number of observations, the median is given the minimum timestamp among the
