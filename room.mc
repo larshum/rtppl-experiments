@@ -112,8 +112,8 @@ let expectedDistanceRear = lam m. lam angle. lam xy. lam ofs.
 
 let expectedDistanceLeft = lam m. lam angle. lam xy. lam ofs.
   let xy = positionPlusOffset xy angle ofs in
-  expectedDistanceAngle m (addf angle (divf pi 2.0)) xy
+  expectedDistanceAngle m (subf angle (divf pi 2.0)) xy
 
 let expectedDistanceRight = lam m. lam angle. lam xy. lam ofs.
   let xy = positionPlusOffset xy angle ofs in
-  expectedDistanceAngle m (subf angle (divf pi 2.0)) xy
+  expectedDistanceAngle m (addf angle (divf pi 2.0)) xy

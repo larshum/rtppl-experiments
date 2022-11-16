@@ -1,5 +1,7 @@
 include "buffers.mc"
 
+type FloatTsv = (Int, Float)
+
 let loopFn : all a. a -> (Int -> a -> a) -> a = lam v. lam f.
   recursive let work = lam i. lam v.
     let vnext = f i v in
@@ -70,7 +72,7 @@ let cmpTsv : (Int, Float) -> (Int, Float) -> Int = lam l. lam r.
   else if ltf l.1 r.1 then negi 1
   else 0
 
-let tsvAvg : (Int, Float) -> (Int, Float) -> (Int, Float) = lam l. lam r.
+let tsvAvg : FloatTsv -> FloatTsv -> FloatTsv = lam l. lam r.
   error "Cannot compute average timestamp"
 
 -- Finds the median among a given sequence of observations. If there is an even
@@ -85,6 +87,8 @@ let median : all a. (a -> a -> Int) -> (a -> a -> a) -> [a] -> a =
     merge (get obs mid) (get obs (addi mid 1))
   else
     get obs (divi n 2)
+
+let medianTsv : [FloatTsv] -> FloatTsv = median cmpTsv tsvAvg
 
 let expectedValuePosDist : Dist [Float] -> [Float] = lam posPosterior.
   match distEmpiricalSamples posPosterior with (samples, weights) in

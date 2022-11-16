@@ -6,8 +6,6 @@ include "constants.mc"
 include "shared.mc"
 include "room.mc"
 
-type FloatTsv = (Int, Float)
-
 let estimatePositionAt : (Float, Float) -> Float -> Float -> Int -> Int -> (Float, Float) =
   lam initialPos. lam speed. lam angle. lam t0. lam t1.
   match initialPos with (x0, y0) in
@@ -60,65 +58,60 @@ let positionModel : RoomMap -> (Int, Dist [Float]) -> Int -> Float -> FloatTsv
     -- If it is not, we could not have moved there, so we weight with negative
     -- infinity.
     (if withinRoomBounds m pos then
-      -- If an observed distance is beyond the maximum range of the sensor, we
-      -- only know that the actual distance is anything between that maximum
-      -- range and the maximum distance we can observe in the room.
-      let obs = lam maxRange. lam obsDist.
-        if ltf obsDist maxRange then obsDist
-        else assume (Uniform maxRange maxDist)
-      in
 
       -- Compute the likelihood of making the provided observations at the
       -- estimated position of the car at their respective timestamps. The
       -- offsets of the sensors are taken into account when making these
       -- observations, as we seek to estimate the position relative to a
       -- central point of the car.
+
       -- TODO: The distance sensor values need to have timestamps relative to
       -- the previous release (t0), so that we can compute what they _should_
-      -- have been.
+      -- have been at that point. For now, we just ignore them.
+      -- TODO: How do we handle the case where the observed distance is outside
+      -- of the sensor range? We should probably do some kind of weighting in
+      -- that case as well.
       match frontLeft with (tsFl, frontLeftObs) in
       --let pos = estimatePositionAt initPos speed newAngle t0 tsFl in
-      let frontLeftObs = obs maxLongRangeSensorDist frontLeftObs in
-      let frontLeftDist = expectedDistanceFront m newAngle pos frontLeftOfs in
-      observe frontLeftObs (Gaussian frontLeftDist 0.1);
+      (if ltf frontLeftObs maxLongRangeSensorDist then
+        let frontLeftDist = expectedDistanceFront m newAngle pos frontLeftOfs in
+        observe frontLeftObs (Gaussian frontLeftDist 0.1)
+      else ());
 
       match frontRight with (tsFr, frontRightObs) in
       --let pos = estimatePositionAt initPos speed newAngle t0 tsFr in
-      let frontRightObs = obs maxLongRangeSensorDist frontRightObs in
-      let frontRightDist = expectedDistanceFront m newAngle pos frontRightOfs in
-      observe frontRightObs (Gaussian frontRightDist 0.1);
+      (if ltf frontRightObs maxLongRangeSensorDist then
+        let frontRightDist = expectedDistanceFront m newAngle pos frontRightOfs in
+        observe frontRightObs (Gaussian frontRightDist 0.1)
+      else ());
 
       match rearLeft with (tsRl, rearLeftObs) in
       --let pos = estimatePositionAt initPos speed newAngle t0 tsRl in
-      let rearLeftObs = obs maxLongRangeSensorDist rearLeftObs in
-      let rearLeftDist = expectedDistanceRear m newAngle pos rearLeftOfs in
-      observe rearLeftObs (Gaussian rearLeftDist 0.1);
+      (if ltf rearLeftObs maxLongRangeSensorDist then
+        let rearLeftDist = expectedDistanceRear m newAngle pos rearLeftOfs in
+        observe rearLeftObs (Gaussian rearLeftDist 0.1)
+      else ());
 
       match rearRight with (tsRr, rearRightObs) in
       --let pos = estimatePositionAt initPos speed newAngle t0 tsRr in
-      let rearRightObs = obs maxLongRangeSensorDist rearRightObs in
-      let rearRightDist = expectedDistanceRear m newAngle pos rearRightOfs in
-      observe rearRightObs (Gaussian rearRightDist 0.1);
+      (if ltf rearRightObs maxLongRangeSensorDist then
+        let rearRightDist = expectedDistanceRear m newAngle pos rearRightOfs in
+        observe rearRightObs (Gaussian rearRightDist 0.1)
+      else ());
 
       match leftSide with (tsLeft, leftSideObs) in
       --let pos = estimatePositionAt initPos speed newAngle t0 tsLeft in
-      let leftSideObs = obs maxShortRangeSensorDist leftSideObs in
-      let leftSide = expectedDistanceLeft m newAngle pos leftOfs in
-      observe leftSideObs (Gaussian leftSide 0.05);
+      (if ltf leftSideObs maxShortRangeSensorDist then
+        let leftSide = expectedDistanceLeft m newAngle pos leftOfs in
+        observe leftSideObs (Gaussian leftSide 0.05)
+      else ());
 
       match rightSide with (tsRight, rightSideObs) in
       --let pos = estimatePositionAt initPos speed newAngle t0 tsRight in
-      let rightSideObs = obs maxShortRangeSensorDist rightSideObs in
-      let rightSide = expectedDistanceRight m newAngle pos rightOfs in
-      observe rightSideObs (Gaussian rightSide 0.05);
-
-      printLn (join ["prior pos: ", float2string x0, " ", float2string y0]);
-      printLn (join ["| ", float2string frontLeftObs, " ", float2string frontLeftDist, " ", float2string (gaussianLogPdf frontLeftDist 0.1 frontLeftObs)]);
-      printLn (join ["| ", float2string frontRightObs, " ", float2string frontRightDist, " ", float2string (gaussianLogPdf frontRightDist 0.1 frontRightObs)]);
-      printLn (join ["| ", float2string rearLeftObs, " ", float2string rearLeftDist, " ", float2string (gaussianLogPdf rearLeftDist 0.1 rearLeftObs)]);
-      printLn (join ["| ", float2string rearRightObs, " ", float2string rearRightDist, " ", float2string (gaussianLogPdf rearRightDist 0.1 rearRightObs)]);
-      printLn (join ["| ", float2string leftSideObs, " ", float2string leftSide, " ", float2string (gaussianLogPdf leftSide 0.05 leftSideObs)]);
-      printLn (join ["| ", float2string rightSideObs, " ", float2string rightSide, " ", float2string (gaussianLogPdf rightSide 0.05 rightSideObs)])
+      (if ltf rightSideObs maxShortRangeSensorDist then
+        let rightSide = expectedDistanceRight m newAngle pos rightOfs in
+        observe rightSideObs (Gaussian rightSide 0.05)
+      else ())
     else
       weight (negf inf));
 
@@ -209,14 +202,14 @@ loopFn state (lam i. lam state.
 
   if eqi (modi i n) 0 then
 
-    let fld = median cmpTsv tsvAvg buffers.frontLeftDists in
-    let frd = median cmpTsv tsvAvg buffers.frontRightDists in
-    let rld = median cmpTsv tsvAvg buffers.rearLeftDists in
-    let rrd = median cmpTsv tsvAvg buffers.rearRightDists in
-    let sld = median cmpTsv tsvAvg buffers.sideLeftDists in
-    let srd = median cmpTsv tsvAvg buffers.sideRightDists in
-    let ls = median cmpTsv tsvAvg buffers.leftSpeeds in
-    let rs = median cmpTsv tsvAvg buffers.rightSpeeds in
+    let fld = medianTsv buffers.frontLeftDists in
+    let frd = medianTsv buffers.frontRightDists in
+    let rld = medianTsv buffers.rearLeftDists in
+    let rrd = medianTsv buffers.rearRightDists in
+    let sld = medianTsv buffers.sideLeftDists in
+    let srd = medianTsv buffers.sideRightDists in
+    let ls = medianTsv buffers.leftSpeeds in
+    let rs = medianTsv buffers.rightSpeeds in
 
     -- NOTE(larshum, 2022-11-14): We assume that the observed speed is constant
     -- during the whole period. It is computed as the average of the median
