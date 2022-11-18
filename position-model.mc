@@ -25,7 +25,7 @@ let estimatePositionAt : (Float, Float) -> Float -> Float -> Int -> Int -> (Floa
   ( addf x0 (mulf distForward (cos angle))
   , addf y0 (mulf distForward (sin angle)) )
 
-let positionModel : RoomMap -> (Int, Dist [Float]) -> Int -> Float -> FloatTsv
+let positionModel : RoomMap -> Int -> Dist [Float] -> Int -> Float -> FloatTsv
                  -> FloatTsv -> FloatTsv -> FloatTsv -> FloatTsv -> FloatTsv
                  -> [Float] =
   lam m. lam t0. lam posPrior. lam t1. lam speed. lam frontLeft. lam frontRight.
