@@ -1,4 +1,5 @@
 include "math.mc"
+include "set.mc"
 include "ext/dist-ext.mc"
 
 include "argparse.mc"
@@ -41,9 +42,8 @@ let positionModel : RoomMap -> Int -> Dist [Float] -> Int -> Float -> FloatTsv
     let speed = assume (Gaussian speed 0.025) in
 
     -- TODO: How do we accurately estimate the angle? For now, we assume it is
-    -- a fixed value.
+    -- varying quite heavily between iterations...
     let newAngle = assume (Gaussian angle (divf pi 4.0)) in
-    --let newAngle = pi in
 
     -- Estimate the current position given speed and time difference, with some
     -- uncertainty.
@@ -133,6 +133,7 @@ let inputs = [
   distanceSideLeft, distanceSideRight, speedValLeft, speedValRight, startTime
 ] in
 let outputs = [obsPosition] in
+let options = {options with bufferOnlyOutputs = setOfSeq subi [obsPosition]} in
 initBuffers options inputs outputs;
 
 let emptyBuffers = lam.

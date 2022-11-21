@@ -14,7 +14,8 @@ type BufferState = {
   mode : Mode,
   buffers : Map Int Buffer,
   inputs : [Int],
-  outputs : [Int]
+  outputs : [Int],
+  bufferOnlyOutputs : Set Int
 }
 
 let _bufferFile = lam id. join ["trace-", int2string id]
@@ -36,28 +37,25 @@ lang RTPPLBuffers
   syn Mode =
   | Default ()
   | Record ()
-  | RecordBufferOnly ()
   | Replay ()
 
   sem selectMode : Options -> Mode
   sem selectMode =
   | options ->
-    if options.recording then
-      if options.recordBufferOnly then RecordBufferOnly ()
-      else Record ()
+    if options.recording then Record ()
     else if options.replaying then Replay ()
     else Default ()
 
   sem loadInputBuffer : Map Int Buffer -> Int -> Mode -> Map Int Buffer
   sem loadInputBuffer buffers id =
   | Default _ -> buffers
-  | Record _ | RecordBufferOnly _ -> mapInsert id (_initBuffer ()) buffers
+  | Record _ -> mapInsert id (_initBuffer ()) buffers
   | Replay _ -> mapInsert id (_loadBuffer id) buffers
 
   sem loadOutputBuffer : Map Int Buffer -> Int -> Mode -> Map Int Buffer
   sem loadOutputBuffer buffers id =
   | Default _ -> buffers
-  | Record _ | RecordBufferOnly _ | Replay _ ->
+  | Record _ | Replay _ ->
     mapInsert id (_initBuffer ()) buffers
 
   sem init : Options -> [Int] -> [Int] -> BufferState
@@ -72,7 +70,8 @@ lang RTPPLBuffers
       foldl
         (lam buffers. lam outputId. loadOutputBuffer buffers outputId mode)
         buffers outputs in
-    {mode = mode, inputs = inputs, outputs = outputs, buffers = buffers}
+    { mode = mode, inputs = inputs, outputs = outputs, buffers = buffers
+    , bufferOnlyOutputs = options.bufferOnlyOutputs }
 
   sem pushBuffer : Int -> BufferState -> TimeStampedValue -> BufferState
   sem pushBuffer id state =
@@ -100,16 +99,18 @@ lang RTPPLBuffers
     let state = pushBuffer id state tsv in
     (state, tsv)
   | Replay _ -> popBuffer id state
-  | RecordBufferOnly _ ->
-    error "Cannot read data when recording in buffer-only mode"
 
   sem writeOutputBuffer : Int -> TimeStampedValue -> BufferState -> Mode -> BufferState
   sem writeOutputBuffer id tsv state =
   | Default _ -> lvWrite id tsv; state
   | Record _ ->
-    lvWrite id tsv;
+    -- NOTE(larshum, 2022-11-21): We do not write to the shared memory if the
+    -- output buffer is marked as buffer only. This is used when we know the
+    -- output will never be read from shared memory (e.g., the final posterior
+    -- estimate).
+    (if setMem id state.bufferOnlyOutputs then () else lvWrite id tsv);
     pushBuffer id state tsv
-  | RecordBufferOnly _ | Replay _ ->
+  | Replay _ ->
     pushBuffer id state tsv
 
   sem saveBuffersAndExit : all a. BufferState -> a
@@ -128,7 +129,7 @@ lang RTPPLBuffers
       else error (join ["Output buffer with id ", int2string id, " not found"])
     in
     iter saveBufferH state.outputs
-  | Record _ | RecordBufferOnly _ ->
+  | Record _ ->
     -- When recording, we store both inputs and output buffer data.
     mapMapWithKey saveBuffer state.buffers ; ()
 

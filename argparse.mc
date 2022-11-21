@@ -1,5 +1,6 @@
 include "arg.mc"
 include "bool.mc"
+include "set.mc"
 
 type Options = {
   printFloat : Int,
@@ -7,8 +8,8 @@ type Options = {
   printPosDist : Int,
   recording : Bool,
   replaying : Bool,
-  recordBufferOnly : Bool,
-  roomMapFile : String
+  roomMapFile : String,
+  bufferOnlyOutputs : Set Int
 }
 
 let optionsDefault = {
@@ -17,8 +18,8 @@ let optionsDefault = {
   printPosDist = negi 1,
   recording = false,
   replaying = false,
-  recordBufferOnly = false,
-  roomMapFile = ""
+  roomMapFile = "",
+  bufferOnlyOutputs = setEmpty subi
 }
 
 let recordMsg = join [
@@ -38,11 +39,6 @@ let printDistMsg = "Prints the contents of a buffer containing a distribution of
 
 let printPosDistMsg = "Prints the contents of a buffer containing a position distribution."
 
-let recordBufferOnlyMsg = join [
-  "Configures the recording mode so that it only writes to buffers. ",
-  "This is useful when producing synthetic data."
-]
-
 let optionsConfig : ParseConfig Options = [
   ( [("--record", "", "")]
   , recordMsg
@@ -59,9 +55,6 @@ let optionsConfig : ParseConfig Options = [
   ( [("--print-pos-dist", " ", "<index>")]
   , printPosDistMsg
   , lam p : ArgPart Options. {p.options with printPosDist = string2int (argToString p)} ),
-  ( [("--record-buffer-only", "", "")]
-  , recordBufferOnlyMsg
-  , lam p : ArgPart Options. {p.options with recordBufferOnly = true} ),
   ( [("--room-map", " ", "<file>")]
   , "Sets the file from which to read a map of a room"
   , lam p : ArgPart Options. {p.options with roomMapFile = argToString p} )
