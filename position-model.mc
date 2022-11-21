@@ -218,10 +218,13 @@ loopFn state (lam i. lam state.
     -- estimation and the period.
     let t1 = addi prevTs (muli n (muli period 1000000)) in
 
+    let start = wallTimeMs () in
     let posPosterior =
       infer (BPF {particles = 1000})
         (lam. positionModel roomMap prevTs posPrior t1 speedObs fld frd rld rrd sld srd)
     in
+    let endt = wallTimeMs () in
+    printLn (join ["Inference time: ", float2string (divf (subf endt start) 1000.0)]);
     match expectedValuePosDist posPosterior with [x, y, _] in
     printLn (join ["Expected value: x=", float2string x, ", y=", float2string y]);
     flushStdout ();
