@@ -6,7 +6,7 @@ out: position-model.mc argparse.mc buffers.mc room.mc shared.mc
 	cppl $<
 
 plot:
-	./out --print-pos-dist 11 | python3 scripts/pos-plot.py $(MAP_FILE).png
+	./out --print-pos-dist trace-11 | python3 scripts/pos-plot.py $(MAP_FILE).png
 
 $(TRACE_INPUTS): producer
 	./$< $(MAP_FILE).txt

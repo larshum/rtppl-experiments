@@ -2,10 +2,13 @@ include "arg.mc"
 include "bool.mc"
 include "set.mc"
 
+type BufferType
+con FloatBuffer : () -> BufferType
+con DistFloatBuffer : () -> BufferType
+con DistPosBuffer : () -> BufferType
+
 type Options = {
-  printFloat : Int,
-  printDist : Int,
-  printPosDist : Int,
+  printBufferFiles : [(String, BufferType)],
   recording : Bool,
   replaying : Bool,
   roomMapFile : String,
@@ -13,9 +16,7 @@ type Options = {
 }
 
 let optionsDefault = {
-  printFloat = negi 1,
-  printDist = negi 1,
-  printPosDist = negi 1,
+  printBufferFiles = [],
   recording = false,
   replaying = false,
   roomMapFile = "",
@@ -33,11 +34,11 @@ let replayMsg = join [
   "is taken from files produced when recording."
 ]
 
-let printFloatMsg = "Prints the contents of a buffer containing floats."
+let printFloatMsg = "Prints the contents of the chosen buffer file containing floats."
 
-let printDistMsg = "Prints the contents of a buffer containing a distribution of floats."
+let printDistMsg = "Prints the contents of the chosen buffer file containing float distributions."
 
-let printPosDistMsg = "Prints the contents of a buffer containing a position distribution."
+let printPosDistMsg = "Prints the contents of the chosen buffer file containing position distributions."
 
 let optionsConfig : ParseConfig Options = [
   ( [("--record", "", "")]
@@ -46,15 +47,21 @@ let optionsConfig : ParseConfig Options = [
   ( [("--replay", "", "")]
   , replayMsg
   , lam p : ArgPart Options. {p.options with replaying = true} ),
-  ( [("--print-float", " ", "<index>")]
+  ( [("--print-float", " ", "<file>")]
   , printFloatMsg
-  , lam p : ArgPart Options. {p.options with printFloat = string2int (argToString p)} ),
-  ( [("--print-dist", " ", "<index>")]
+  , lam p : ArgPart Options.
+      let entry = (argToString p, FloatBuffer ()) in
+      {p.options with printBufferFiles = snoc p.options.printBufferFiles entry} ),
+  ( [("--print-dist", " ", "<file>")]
   , printDistMsg
-  , lam p : ArgPart Options. {p.options with printDist = string2int (argToString p)} ),
-  ( [("--print-pos-dist", " ", "<index>")]
+  , lam p : ArgPart Options.
+      let entry = (argToString p, DistFloatBuffer ()) in
+      {p.options with printBufferFiles = snoc p.options.printBufferFiles entry} ),
+  ( [("--print-pos-dist", " ", "<file>")]
   , printPosDistMsg
-  , lam p : ArgPart Options. {p.options with printPosDist = string2int (argToString p)} ),
+  , lam p : ArgPart Options.
+      let entry = (argToString p, DistPosBuffer ()) in
+      {p.options with printBufferFiles = snoc p.options.printBufferFiles entry} ),
   ( [("--room-map", " ", "<file>")]
   , "Sets the file from which to read a map of a room"
   , lam p : ArgPart Options. {p.options with roomMapFile = argToString p} )
@@ -68,7 +75,5 @@ let parseOptions : [String] -> Options = lam args.
     let options = r.options in
     if and options.recording options.replaying then
       error "Cannot enable recording and replaying at the same time"
-    else if and (neqi options.printFloat (negi 1)) (neqi options.printDist (negi 1)) then
-      error "Can only print the contents of one buffer at a time"
     else options
   else argPrintError result; exit 1

@@ -8,14 +8,13 @@ let loopFn : all a. a -> (Int -> a -> a) -> a = lam v. lam f.
     work (addi i 1) vnext
   in work 1 v
 
-let printFloatBuffer : Int -> () = lam id.
+let printFloatBuffer : String -> () = lam id.
   let buf = _loadBuffer id in
   let printTsv = lam tsv.
     match tsv with (ts, value) in
     join [int2string ts, " ", float2string (unsafeCoerce value)]
   in
-  printLn (strJoin "\n" (map printTsv buf));
-  exit 0
+  printLn (strJoin "\n" (map printTsv buf))
 
 let printDist : all a. (a -> String) -> Dist a -> () =
   lam printSample. lam dist.
@@ -28,16 +27,15 @@ let printDist : all a. (a -> String) -> Dist a -> () =
   match distEmpiricalSamples dist with (samples, weights) in
   work samples weights
 
-let printFloatDistributionBuffer : Int -> () = lam id.
+let printFloatDistributionBuffer : String -> () = lam id.
   let buf = _loadBuffer id in
   let printTsv = lam tsv.
     match tsv with (_, dist) in
     printDist float2string (unsafeCoerce dist)
   in
-  iter printTsv buf;
-  exit 0
+  iter printTsv buf
 
-let printPositionDistributionBuffer : Int -> () = lam id.
+let printPositionDistributionBuffer : String -> () = lam id.
   let printPosSample : [Float] -> String = lam sample.
     match sample with [x, y, angle] in
     join [float2string x, " ", float2string y, " ", float2string angle]
@@ -47,17 +45,25 @@ let printPositionDistributionBuffer : Int -> () = lam id.
     match tsv with (_, dist) in
     printDist printPosSample (unsafeCoerce dist)
   in
-  iter printTsv buf;
-  exit 0
+  iter printTsv buf
 
 let handleOptions : Options -> () = lam options.
-  if neqi options.printFloat (negi 1) then
-    printFloatBuffer options.printFloat
-  else if neqi options.printDist (negi 1) then
-    printFloatDistributionBuffer options.printDist
-  else if neqi options.printPosDist (negi 1) then
-    printPositionDistributionBuffer options.printPosDist
-  else ()
+  if null options.printBufferFiles then ()
+  else (
+    iter
+      (lam entry.
+        match entry with (id, bufType) in
+        printError (join ["Printing contents of buffer file ", id, ":\n"]); flushStderr ();
+        match bufType with FloatBuffer _ then
+          printFloatBuffer id
+        else match bufType with DistFloatBuffer _ then
+          printFloatDistributionBuffer id
+        else match bufType with DistPosBuffer _ then
+          printPositionDistributionBuffer id
+        else never)
+      options.printBufferFiles;
+    exit 0
+  )
 
 let cmpFloat : Float -> Float -> Int = lam l. lam r.
   if gtf l r then 1

@@ -19,19 +19,20 @@ type BufferState = {
 }
 
 let _bufferFile = lam id. join ["trace-", int2string id]
+let _replayBufferFile = lam id. join ["replay-", _bufferFile id]
 
 let _initBuffer = lam. toList []
 
 let _loadBuffer = lam id.
-  match readOpen (_bufferFile id) with Some bufFile then
+  match readOpen id with Some bufFile then
     let data : [TimeStampedValue] = unsafeCoerce (readBinary bufFile) in
     toList data
-  else error (join ["Could not open buffer file ", _bufferFile id, " for reading"])
+  else error (join ["Could not open buffer file ", id, " for reading"])
 
 let _saveBuffer = lam id. lam tsvs.
-  match writeOpen (_bufferFile id) with Some bufFile then
+  match writeOpen id with Some bufFile then
     writeBinary bufFile (reverse tsvs)
-  else error (join ["Could not open buffer file ", _bufferFile id, " for writing"])
+  else error (join ["Could not open buffer file ", id, " for writing"])
 
 lang RTPPLBuffers
   syn Mode =
@@ -50,7 +51,7 @@ lang RTPPLBuffers
   sem loadInputBuffer buffers id =
   | Default _ -> buffers
   | Record _ -> mapInsert id (_initBuffer ()) buffers
-  | Replay _ -> mapInsert id (_loadBuffer id) buffers
+  | Replay _ -> mapInsert id (_loadBuffer (_bufferFile id)) buffers
 
   sem loadOutputBuffer : Map Int Buffer -> Int -> Mode -> Map Int Buffer
   sem loadOutputBuffer buffers id =
@@ -121,11 +122,11 @@ lang RTPPLBuffers
   sem saveBuffers state =
   | Default _ -> ()
   | Replay _ ->
-    -- When replaying, we store the values in the output buffers but leave the
-    -- input buffers the way they were before.
+    -- When replaying, we store the values in the output buffers in separate
+    -- files, and leave the input buffers the way they were before.
     let saveBufferH = lam id.
       match mapLookup id state.buffers with Some buf then
-        saveBuffer id buf
+        _saveBuffer (_replayBufferFile id) buf
       else error (join ["Output buffer with id ", int2string id, " not found"])
     in
     iter saveBufferH state.outputs
@@ -135,7 +136,7 @@ lang RTPPLBuffers
 
   sem saveBuffer : Int -> [TimeStampedValue] -> ()
   sem saveBuffer id =
-  | tsvs -> _saveBuffer id tsvs
+  | tsvs -> _saveBuffer (_bufferFile id) tsvs
 end
 
 -- Overwrite the above definitions with ones that operate on a mutable
