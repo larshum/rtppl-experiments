@@ -52,6 +52,10 @@ shared_mem_t sm_regs[] = {
     .size = sizeof(sensor_val_t),
     .mgmt = NULL
   },{
+    .name = "SteeringAngle",
+    .size = sizeof(sensor_val_t),
+    .mgmt = NULL
+  },{
     .name = "StartTime",
     .size = sizeof(sensor_val_t),
     .mgmt  = NULL
