@@ -105,3 +105,9 @@ let expectedValuePosDist : Dist [Float] -> [Float] = lam posPosterior.
       let nw = exp w in
       [addf xAcc (mulf nw x), addf yAcc (mulf nw y), addf angleAcc (mulf nw angle)])
     [0.0, 0.0, 0.0] (zip samples weights)
+
+let degToRad = lam angle.
+  divf (mulf angle 180.0) pi
+
+let radToDeg = lam angle.
+  divf (mulf angle pi) 180.0

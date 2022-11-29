@@ -7,30 +7,29 @@ include "constants.mc"
 include "shared.mc"
 include "room.mc"
 
+-- Compute difference between timestamps and convert difference to a time
+-- in seconds.
+let deltaT : Int -> Int -> Float = lam t0. lam t1.
+  if eqi t0 0 then 0.0
+  else divf (int2float (subi t1 t0)) 1000000000.0
+
 let estimatePositionAt : (Float, Float) -> Float -> Float -> Int -> Int -> (Float, Float) =
   lam initialPos. lam speed. lam angle. lam t0. lam t1.
   match initialPos with (x0, y0) in
 
-  -- Compute difference between timestamps and convert difference to a time
-  -- in seconds.
-  let timeDiff =
-    if eqi t0 0 then 0.0
-    else divf (int2float (subi t1 t0)) 1000000000.0
-  in
-
   -- Estimate the distance travelled based on the estimated speed and the time
   -- difference. Given the angle in which the car is travelling, we use this to
   -- estimate the new position of the car.
-  let distEst = mulf speed timeDiff in
+  let distEst = mulf speed (deltaT t0 t1) in
   let distForward = assume (Gaussian distEst (mulf distEst 0.1)) in
   ( addf x0 (mulf distForward (cos angle))
   , addf y0 (mulf distForward (sin angle)) )
 
 let positionModel : RoomMap -> Int -> Dist [Float] -> Int -> Float -> FloatTsv
                  -> FloatTsv -> FloatTsv -> FloatTsv -> FloatTsv -> FloatTsv
-                 -> [Float] =
+                 -> [FloatTsv] -> [Float] =
   lam m. lam t0. lam posPrior. lam t1. lam speed. lam frontLeft. lam frontRight.
-  lam rearLeft. lam rearRight. lam leftSide. lam rightSide.
+  lam rearLeft. lam rearRight. lam leftSide. lam rightSide. lam steeringAngles.
 
   -- Get an estimate of the previous position of the car.
   match assume posPrior with [x0, y0, angle] in
@@ -41,9 +40,24 @@ let positionModel : RoomMap -> Int -> Dist [Float] -> Int -> Float -> FloatTsv
     -- There is some degree of uncertainty in what the actual speed is.
     let speed = assume (Gaussian speed 0.025) in
 
-    -- TODO: How do we accurately estimate the angle? For now, we assume it is
-    -- varying quite heavily between iterations...
-    let newAngle = assume (Gaussian angle (divf pi 4.0)) in
+    -- We compute the new angle from the observed steering angle inputs since
+    -- the last estimation. The uncertainty is included in the observed
+    -- steering angles.
+    /-let expectedAngle =
+      if eqi t0 0 then angle
+      else
+        (foldl
+          (lam acc. lam angleObs.
+            match acc with (tsPrev, angle) in
+            match angleObs with (ts, steeringAngleObs) in
+            let steeringAngle = assume (Gaussian steeringAngleObs 0.05) in
+            let angleDelta = divf (mulf (mulf speed (deltaT tsPrev ts))
+                                        (tan steeringAngleObs)) 0.45 in
+            (ts, addf angle angleDelta))
+          (t0, angle) steeringAngles).1
+    in
+    let newAngle = assume (Gaussian expectedAngle 0.1) in-/
+    let newAngle = assume (Gaussian angle (divf pi 4.)) in
 
     -- Estimate the current position given speed and time difference, with some
     -- uncertainty.
@@ -130,7 +144,8 @@ in
 
 let inputs = [
   distanceFrontLeft, distanceFrontRight, distanceBackLeft, distanceBackRight,
-  distanceSideLeft, distanceSideRight, speedValLeft, speedValRight, startTime
+  distanceSideLeft, distanceSideRight, speedValLeft, speedValRight,
+  steeringAngle, startTime
 ] in
 let outputs = [obsPosition] in
 let options = {options with bufferOnlyOutputs = setOfSeq subi [obsPosition]} in
@@ -144,7 +159,8 @@ let emptyBuffers = lam.
   , sideLeftDists = toList []
   , sideRightDists = toList []
   , leftSpeeds = toList []
-  , rightSpeeds = toList [] }
+  , rightSpeeds = toList []
+  , steeringAngles = toList [] }
 in
 
 match readFloatData startTime with (t0, _) in
@@ -186,6 +202,7 @@ loopFn state (lam i. lam state.
   let sideRight = readFloatData distanceSideRight in
   let speedLeft = readFloatData speedValLeft in
   let speedRight = readFloatData speedValRight in
+  let angle = readFloatData steeringAngle in
 
   let buffers = {buffers with
     frontLeftDists = snoc buffers.frontLeftDists frontLeft,
@@ -195,7 +212,8 @@ loopFn state (lam i. lam state.
     sideLeftDists = snoc buffers.sideLeftDists sideLeft,
     sideRightDists = snoc buffers.sideRightDists sideRight,
     leftSpeeds = snoc buffers.leftSpeeds speedLeft,
-    rightSpeeds = snoc buffers.rightSpeeds speedRight
+    rightSpeeds = snoc buffers.rightSpeeds speedRight,
+    steeringAngles = snoc buffers.steeringAngles angle
   } in
 
   if eqi (modi i n) 0 then
@@ -222,12 +240,13 @@ loopFn state (lam i. lam state.
     let start = wallTimeMs () in
     let posPosterior =
       infer (BPF {particles = 1000})
-        (lam. positionModel roomMap prevTs posPrior t1 speedObs fld frd rld rrd sld srd)
+        (lam. positionModel roomMap prevTs posPrior t1 speedObs fld frd rld
+                rrd sld srd buffers.steeringAngles)
     in
     let endt = wallTimeMs () in
     printLn (join ["Inference time: ", float2string (divf (subf endt start) 1000.0)]);
-    match expectedValuePosDist posPosterior with [x, y, _] in
-    printLn (join ["Expected value: x=", float2string x, ", y=", float2string y]);
+    match expectedValuePosDist posPosterior with [x, y, angle] in
+    printLn (join ["Expected value: x=", float2string x, ", y=", float2string y, ", angle=", float2string angle]);
     flushStdout ();
 
     let posteriorTsv = (t1, posPosterior) in
