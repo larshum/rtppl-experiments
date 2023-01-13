@@ -17,7 +17,7 @@ def figid(x, n):
     else:
         return f"{c}"
 
-batchsz = 1000
+batchsz = 10000
 
 if not os.path.exists("plots/"):
     os.mkdir("plots")
@@ -56,7 +56,7 @@ if len(sys.argv) > 1:
                 x = int(10 * float(x))
                 y = int(10 * float(y))
                 if x >= 0 and x < len(data[0]) and y >= 0 and y < len(data):
-                    data[y][x] += math.exp(float(w))
+                    data[y][x] += 1
             axs.imshow(data)
             axs.imshow(im, alpha=0.5)
             axs.set_xlabel("x")
