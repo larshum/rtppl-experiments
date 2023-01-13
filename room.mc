@@ -8,6 +8,8 @@ type Pos = (Float, Float)
 -- e.g., because of a wall.
 type RoomMap = [[Bool]]
 
+let roomScaleFactor = 10.0
+
 -- Read the map encoding from a file. The first line contains the number of
 -- rows and columns, separated by space. The second line contains the data,
 -- which is a sequence of 0's and 1's of length equal to #rows * #cols.
@@ -47,7 +49,7 @@ let roomDims : RoomMap -> (Int, Int) = lam m.
 -- map and back.
 let positionToCoord : Pos -> (Int, Int) = lam xy.
   match xy with (x, y) in
-  (floorfi (mulf y 10.0), floorfi (mulf x 10.0))
+  (floorfi (mulf y roomScaleFactor), floorfi (mulf x roomScaleFactor))
 
 let eqCoord = lam l. lam r. and (eqi l.0 r.0) (eqi l.1 r.1)
 utest positionToCoord (1.23, 0.5) with (5, 12) using eqCoord
@@ -55,7 +57,7 @@ utest positionToCoord (6.44, 3.99) with (39, 64) using eqCoord
 
 let coordToPosition : (Int, Int) -> Pos = lam rowCol.
   match rowCol with (row, col) in
-  (divf (int2float col) 10.0, divf (int2float row) 10.0)
+  (divf (int2float col) roomScaleFactor, divf (int2float row) roomScaleFactor)
 
 let eqPos = lam l. lam r. and (eqf l.0 r.0) (eqf l.1 r.1)
 utest coordToPosition (1, 0) with (0.0, 0.1) using eqPos

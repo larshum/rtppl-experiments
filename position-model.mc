@@ -4,6 +4,7 @@ include "ext/dist-ext.mc"
 
 include "argparse.mc"
 include "constants.mc"
+include "init-pos.mc"
 include "shared.mc"
 include "room.mc"
 
@@ -25,111 +26,110 @@ let estimatePositionAt : (Float, Float) -> Float -> Float -> Int -> Int -> (Floa
   ( addf x0 (mulf distForward (cos angle))
   , addf y0 (mulf distForward (sin angle)) )
 
-let positionModel : RoomMap -> Int -> Dist [Float] -> Int -> Float -> FloatTsv
+let positionModel : RoomMap -> Int -> Dist (Float, Float, Float) -> Int -> Float -> FloatTsv
                  -> FloatTsv -> FloatTsv -> FloatTsv -> FloatTsv -> FloatTsv
-                 -> [FloatTsv] -> [Float] =
+                 -> [FloatTsv] -> (Float, Float, Float) =
   lam m. lam t0. lam posPrior. lam t1. lam speed. lam frontLeft. lam frontRight.
   lam rearLeft. lam rearRight. lam leftSide. lam rightSide. lam steeringAngles.
 
   -- Get an estimate of the previous position of the car.
-  match assume posPrior with [x0, y0, angle] in
+  match assume posPrior with (x0, y0, angle) in
   let initPos = (x0, y0) in
 
-  if withinRoomBounds m initPos then
+  match coordToPosition (roomDims m) with (maxX, maxY) in
+  let maxDist = sqrt (addf (mulf maxX maxX) (mulf maxY maxY)) in
 
-    -- There is some degree of uncertainty in what the actual speed is.
-    let speed = assume (Gaussian speed 0.025) in
+  -- There is some degree of uncertainty in what the actual speed is.
+  let speed = assume (Gaussian speed 0.025) in
 
-    -- We compute the new angle from the observed steering angle inputs since
-    -- the last estimation. The uncertainty is included in the observed
-    -- steering angles.
-    /-let expectedAngle =
-      if eqi t0 0 then angle
-      else
-        (foldl
-          (lam acc. lam angleObs.
-            match acc with (tsPrev, angle) in
-            match angleObs with (ts, steeringAngleObs) in
-            let steeringAngle = assume (Gaussian steeringAngleObs 0.05) in
-            let angleDelta = divf (mulf (mulf speed (deltaT tsPrev ts))
-                                        (tan steeringAngleObs)) 0.45 in
-            (ts, addf angle angleDelta))
-          (t0, angle) steeringAngles).1
-    in
-    let newAngle = assume (Gaussian expectedAngle 0.1) in-/
-    let newAngle = assume (Gaussian angle (divf pi 4.)) in
-
-    -- Estimate the current position given speed and time difference, with some
-    -- uncertainty.
-    let pos = estimatePositionAt initPos speed newAngle t0 t1 in
-
-    -- Check whether the position we presumably moved to is also within bounds.
-    -- If it is not, we could not have moved there, so we weight with negative
-    -- infinity.
-    (if withinRoomBounds m pos then
-
-      -- Compute the likelihood of making the provided observations at the
-      -- estimated position of the car at their respective timestamps. The
-      -- offsets of the sensors are taken into account when making these
-      -- observations, as we seek to estimate the position relative to a
-      -- central point of the car.
-
-      -- TODO: The distance sensor values need to have timestamps relative to
-      -- the previous release (t0), so that we can compute what they _should_
-      -- have been at that point. For now, we just ignore them.
-      -- TODO: How do we handle the case where the observed distance is outside
-      -- of the sensor range? We should probably do some kind of weighting in
-      -- that case as well.
-      match frontLeft with (tsFl, frontLeftObs) in
-      --let pos = estimatePositionAt initPos speed newAngle t0 tsFl in
-      (if ltf frontLeftObs maxLongRangeSensorDist then
-        let frontLeftDist = expectedDistanceFront m newAngle pos frontLeftOfs in
-        observe frontLeftObs (Gaussian frontLeftDist 0.1)
-      else ());
-
-      match frontRight with (tsFr, frontRightObs) in
-      --let pos = estimatePositionAt initPos speed newAngle t0 tsFr in
-      (if ltf frontRightObs maxLongRangeSensorDist then
-        let frontRightDist = expectedDistanceFront m newAngle pos frontRightOfs in
-        observe frontRightObs (Gaussian frontRightDist 0.1)
-      else ());
-
-      match rearLeft with (tsRl, rearLeftObs) in
-      --let pos = estimatePositionAt initPos speed newAngle t0 tsRl in
-      (if ltf rearLeftObs maxLongRangeSensorDist then
-        let rearLeftDist = expectedDistanceRear m newAngle pos rearLeftOfs in
-        observe rearLeftObs (Gaussian rearLeftDist 0.1)
-      else ());
-
-      match rearRight with (tsRr, rearRightObs) in
-      --let pos = estimatePositionAt initPos speed newAngle t0 tsRr in
-      (if ltf rearRightObs maxLongRangeSensorDist then
-        let rearRightDist = expectedDistanceRear m newAngle pos rearRightOfs in
-        observe rearRightObs (Gaussian rearRightDist 0.1)
-      else ());
-
-      match leftSide with (tsLeft, leftSideObs) in
-      --let pos = estimatePositionAt initPos speed newAngle t0 tsLeft in
-      (if ltf leftSideObs maxShortRangeSensorDist then
-        let leftSide = expectedDistanceLeft m newAngle pos leftOfs in
-        observe leftSideObs (Gaussian leftSide 0.05)
-      else ());
-
-      match rightSide with (tsRight, rightSideObs) in
-      --let pos = estimatePositionAt initPos speed newAngle t0 tsRight in
-      (if ltf rightSideObs maxShortRangeSensorDist then
-        let rightSide = expectedDistanceRight m newAngle pos rightOfs in
-        observe rightSideObs (Gaussian rightSide 0.05)
-      else ())
+  -- We compute the new angle from the observed steering angle inputs since
+  -- the last estimation. The uncertainty is included in the observed
+  -- steering angles.
+  /-let expectedAngle =
+    if eqi t0 0 then angle
     else
-      weight (negf inf));
+      (foldl
+        (lam acc. lam angleObs.
+          match acc with (tsPrev, angle) in
+          match angleObs with (ts, steeringAngleObs) in
+          let steeringAngleObs = degToRad steeringAngleObs in
+          let steeringAngle = assume (Gaussian steeringAngleObs 0.01) in
+          --printLn (join [" ", float2string (deltaT tsPrev ts), " ", float2string speed, " ", float2string (tan steeringAngle)]);
+          let angleDelta = divf (mulf (mulf speed (deltaT tsPrev ts))
+                                      (tan steeringAngle)) 0.45 in
+          (ts, addf angle angleDelta))
+        (t0, angle) steeringAngles).1
+  in
+  let newAngle = assume (Gaussian expectedAngle 0.01) in-/
+  let newAngle = assume (Gaussian angle (divf pi 4.)) in
 
-    resample;
-    [pos.0, pos.1, newAngle]
+  -- Estimate the current position given speed and time difference, with some
+  -- uncertainty.
+  let pos = estimatePositionAt initPos speed newAngle t0 t1 in
+
+  -- Check whether the position we presumably moved to is also within bounds.
+  -- If it is not, we could not have moved there, so we weight with negative
+  -- infinity.
+  (if withinRoomBounds m pos then
+
+    -- Compute the likelihood of making the provided observations at the
+    -- estimated position of the car at their respective timestamps. The
+    -- offsets of the sensors are taken into account when making these
+    -- observations, as we seek to estimate the position relative to a
+    -- central point of the car.
+
+    -- TODO: The distance sensor values need to have timestamps relative to
+    -- the previous release (t0), so that we can compute what they _should_
+    -- have been at that point. For now, we just ignore them.
+    -- TODO: How do we handle the case where the observed distance is outside
+    -- of the sensor range? We should probably do some kind of weighting in
+    -- that case as well.
+    match frontLeft with (tsFl, frontLeftObs) in
+    --let pos = estimatePositionAt initPos speed newAngle t0 tsFl in
+    (if ltf frontLeftObs maxLongRangeSensorDist then
+      let frontLeftDist = expectedDistanceFront m newAngle pos frontLeftOfs in
+      observe frontLeftObs (Gaussian frontLeftDist 0.1)
+    else ());
+
+    match frontRight with (tsFr, frontRightObs) in
+    --let pos = estimatePositionAt initPos speed newAngle t0 tsFr in
+    (if ltf frontRightObs maxLongRangeSensorDist then
+      let frontRightDist = expectedDistanceFront m newAngle pos frontRightOfs in
+      observe frontRightObs (Gaussian frontRightDist 0.1)
+    else ());
+
+    match rearLeft with (tsRl, rearLeftObs) in
+    --let pos = estimatePositionAt initPos speed newAngle t0 tsRl in
+    (if ltf rearLeftObs maxLongRangeSensorDist then
+      let rearLeftDist = expectedDistanceRear m newAngle pos rearLeftOfs in
+      observe rearLeftObs (Gaussian rearLeftDist 0.1)
+    else ());
+
+    match rearRight with (tsRr, rearRightObs) in
+    --let pos = estimatePositionAt initPos speed newAngle t0 tsRr in
+    (if ltf rearRightObs maxLongRangeSensorDist then
+      let rearRightDist = expectedDistanceRear m newAngle pos rearRightOfs in
+      observe rearRightObs (Gaussian rearRightDist 0.1)
+    else ());
+
+    match leftSide with (tsLeft, leftSideObs) in
+    --let pos = estimatePositionAt initPos speed newAngle t0 tsLeft in
+    (if ltf leftSideObs maxShortRangeSensorDist then
+      let leftSide = expectedDistanceLeft m newAngle pos leftOfs in
+      observe leftSideObs (Gaussian leftSide 0.05)
+    else ());
+
+    match rightSide with (tsRight, rightSideObs) in
+    --let pos = estimatePositionAt initPos speed newAngle t0 tsRight in
+    (if ltf rightSideObs maxShortRangeSensorDist then
+      let rightSide = expectedDistanceRight m newAngle pos rightOfs in
+      observe rightSideObs (Gaussian rightSide 0.05)
+    else ())
   else
-    weight (negf inf);
-    resample;
-    [x0, y0, angle]
+    weight (negf inf));
+
+  resample;
+  (pos.0, pos.1, newAngle)
 
 mexpr
 
@@ -170,19 +170,18 @@ match readFloatData startTime with (t0, _) in
 match coordToPosition (roomDims roomMap) with (maxX, maxY) in
 printLn (join ["Room dimensions: ", float2string maxX, " ", float2string maxY]);
 
-let positionPrior =
-  distCombineIndependent
-    [ Uniform 0.0 maxX -- prior for x-coordinate
-    , Uniform 0.0 maxY -- prior for y-coordinate
-    , Uniform 0.0 (mulf 2.0 pi) ] -- prior for the angle (direction of the car)
-in
+-- Configuration parameters
+let n = 9 in
+let period = 100 in
+
+-- NOTE(larshum, 2023-01-12): We define the distribution for the initial
+-- position in 'init-pos.mc'.
+let positionPrior = initPosDist roomMap in
 let state = {
   posPriorTsv = (0, positionPrior),
   buffers = emptyBuffers ()
 } in
-
-let n = 9 in
-let period = 100 in
+writeData obsPosition state.posPriorTsv;
 
 loopFn state (lam i. lam state.
   -- Skip the delay if we are in replay mode
@@ -239,13 +238,13 @@ loopFn state (lam i. lam state.
 
     let start = wallTimeMs () in
     let posPosterior =
-      infer (BPF {particles = 1000})
+      infer (BPF {particles = 10000})
         (lam. positionModel roomMap prevTs posPrior t1 speedObs fld frd rld
                 rrd sld srd buffers.steeringAngles)
     in
     let endt = wallTimeMs () in
     printLn (join ["Inference time: ", float2string (divf (subf endt start) 1000.0)]);
-    match expectedValuePosDist posPosterior with [x, y, angle] in
+    match expectedValuePosDist posPosterior with (x, y, angle) in
     printLn (join ["Expected value: x=", float2string x, ", y=", float2string y, ", angle=", float2string angle]);
     flushStdout ();
 

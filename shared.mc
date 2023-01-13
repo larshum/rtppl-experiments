@@ -36,8 +36,8 @@ let printFloatDistributionBuffer : String -> () = lam id.
   iter printTsv buf
 
 let printPositionDistributionBuffer : String -> () = lam id.
-  let printPosSample : [Float] -> String = lam sample.
-    match sample with [x, y, angle] in
+  let printPosSample : (Float, Float, Float) -> String = lam sample.
+    match sample with (x, y, angle) in
     join [float2string x, " ", float2string y, " ", float2string angle]
   in
   let buf = _loadBuffer id in
@@ -96,15 +96,15 @@ let median : all a. (a -> a -> Int) -> (a -> a -> a) -> [a] -> a =
 
 let medianTsv : [FloatTsv] -> FloatTsv = median cmpTsv tsvAvg
 
-let expectedValuePosDist : Dist [Float] -> [Float] = lam posPosterior.
+let expectedValuePosDist : Dist (Float, Float, Float) -> (Float, Float, Float) = lam posPosterior.
   match distEmpiricalSamples posPosterior with (samples, weights) in
   foldl
-    (lam acc : [Float]. lam t.
-      match acc with [xAcc, yAcc, angleAcc] in
-      match t with ([x, y, angle], w) in
+    (lam acc. lam t.
+      match acc with (xAcc, yAcc, angleAcc) in
+      match t with ((x, y, angle), w) in
       let nw = exp w in
-      [addf xAcc (mulf nw x), addf yAcc (mulf nw y), addf angleAcc (mulf nw angle)])
-    [0.0, 0.0, 0.0] (zip samples weights)
+      (addf xAcc (mulf nw x), addf yAcc (mulf nw y), addf angleAcc (mulf nw angle)))
+    (0.0, 0.0, 0.0) (zip samples weights)
 
 let degToRad = lam angle.
   divf (mulf angle 180.0) pi
