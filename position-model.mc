@@ -8,6 +8,8 @@ include "init-pos.mc"
 include "shared.mc"
 include "room.mc"
 
+let neginf = negf inf
+
 -- Compute difference between timestamps and convert difference to a time
 -- in seconds.
 let deltaT : Int -> Int -> Float = lam t0. lam t1.
@@ -67,9 +69,8 @@ let positionModel : RoomMap -> Int -> Dist (Float, Float, Float) -> Int -> Float
   -- uncertainty.
   let pos = estimatePositionAt initPos speed newAngle t0 t1 in
 
-  -- Check whether the position we presumably moved to is also within bounds.
-  -- If it is not, we could not have moved there, so we weight with negative
-  -- infinity.
+  -- Check whether the estimated new position is within bounds. If it is not,
+  -- we could not have moved there, so we weight with negative infinity.
   (if withinRoomBounds m pos then
 
     -- Compute the likelihood of making the provided observations at the
@@ -78,55 +79,57 @@ let positionModel : RoomMap -> Int -> Dist (Float, Float, Float) -> Int -> Float
     -- observations, as we seek to estimate the position relative to a
     -- central point of the car.
 
-    -- TODO: The distance sensor values need to have timestamps relative to
-    -- the previous release (t0), so that we can compute what they _should_
-    -- have been at that point. For now, we just ignore them.
-    -- TODO: How do we handle the case where the observed distance is outside
-    -- of the sensor range? We should probably do some kind of weighting in
-    -- that case as well.
+    -- NOTE(larshum, 2023-01-13): We handle three cases for each sensor
+    -- * If the observed distance is within its bounds, we consider how likely
+    --   the observation is given an estimated distance based on the position.
+    -- * Otherwise, it greater than the max distance. If the estimated distance
+    --   is less than this, the car cannot be at the current position.
+    -- * Otherwise, both the observed and estimated distances are greater than
+    --   the max distance. In this case, we do not get any information from the
+    --   sensor.
     match frontLeft with (tsFl, frontLeftObs) in
-    --let pos = estimatePositionAt initPos speed newAngle t0 tsFl in
+    let frontLeftEst = expectedDistanceFront m newAngle pos frontLeftOfs in
     (if ltf frontLeftObs maxLongRangeSensorDist then
-      let frontLeftDist = expectedDistanceFront m newAngle pos frontLeftOfs in
-      observe frontLeftObs (Gaussian frontLeftDist 0.1)
+      observe frontLeftObs (Gaussian frontLeftEst 0.1)
+    else if ltf frontLeftEst maxLongRangeSensorDist then weight neginf
     else ());
 
     match frontRight with (tsFr, frontRightObs) in
-    --let pos = estimatePositionAt initPos speed newAngle t0 tsFr in
+    let frontRightEst = expectedDistanceFront m newAngle pos frontRightOfs in
     (if ltf frontRightObs maxLongRangeSensorDist then
-      let frontRightDist = expectedDistanceFront m newAngle pos frontRightOfs in
-      observe frontRightObs (Gaussian frontRightDist 0.1)
+      observe frontRightObs (Gaussian frontRightEst 0.1)
+    else if ltf frontRightEst maxLongRangeSensorDist then weight neginf
     else ());
 
     match rearLeft with (tsRl, rearLeftObs) in
-    --let pos = estimatePositionAt initPos speed newAngle t0 tsRl in
+    let rearLeftEst = expectedDistanceRear m newAngle pos rearLeftOfs in
     (if ltf rearLeftObs maxLongRangeSensorDist then
-      let rearLeftDist = expectedDistanceRear m newAngle pos rearLeftOfs in
-      observe rearLeftObs (Gaussian rearLeftDist 0.1)
+      observe rearLeftObs (Gaussian rearLeftEst 0.1)
+    else if ltf rearLeftEst maxLongRangeSensorDist then weight neginf
     else ());
 
     match rearRight with (tsRr, rearRightObs) in
-    --let pos = estimatePositionAt initPos speed newAngle t0 tsRr in
+    let rearRightEst = expectedDistanceRear m newAngle pos rearRightOfs in
     (if ltf rearRightObs maxLongRangeSensorDist then
-      let rearRightDist = expectedDistanceRear m newAngle pos rearRightOfs in
-      observe rearRightObs (Gaussian rearRightDist 0.1)
+      observe rearRightObs (Gaussian rearRightEst 0.1)
+    else if ltf rearRightEst maxLongRangeSensorDist then weight neginf
     else ());
 
     match leftSide with (tsLeft, leftSideObs) in
-    --let pos = estimatePositionAt initPos speed newAngle t0 tsLeft in
+    let leftSideEst = expectedDistanceLeft m newAngle pos leftOfs in
     (if ltf leftSideObs maxShortRangeSensorDist then
-      let leftSide = expectedDistanceLeft m newAngle pos leftOfs in
-      observe leftSideObs (Gaussian leftSide 0.05)
+      observe leftSideObs (Gaussian leftSideEst 0.05)
+    else if ltf leftSideEst maxShortRangeSensorDist then weight neginf
     else ());
 
     match rightSide with (tsRight, rightSideObs) in
-    --let pos = estimatePositionAt initPos speed newAngle t0 tsRight in
+    let rightSideEst = expectedDistanceRight m newAngle pos rightOfs in
     (if ltf rightSideObs maxShortRangeSensorDist then
-      let rightSide = expectedDistanceRight m newAngle pos rightOfs in
-      observe rightSideObs (Gaussian rightSide 0.05)
+      observe rightSideObs (Gaussian rightSideEst 0.05)
+    else if ltf rightSideEst maxShortRangeSensorDist then weight neginf
     else ())
   else
-    weight (negf inf));
+    weight neginf);
 
   resample;
   (pos.0, pos.1, newAngle)
