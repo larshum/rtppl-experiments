@@ -255,6 +255,13 @@ loopFn state (lam i. lam state.
 
     writeData obsPosition posteriorTsv;
 
+    -- If all estimated positions have weight 0, we report that the program
+    -- terminated due to this and save buffers to files.
+    (if distEmpiricalDegenerate posPosterior then
+      printLn "Estimated posterior distribution has only positions with weight 0";
+      saveBuffersAndExit 2
+    else ());
+
     {state with posPriorTsv = posteriorTsv, buffers = emptyBuffers ()}
 
   else {state with buffers = buffers}
