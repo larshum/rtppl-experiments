@@ -104,18 +104,18 @@ let expectedDistanceAngle : RoomMap -> Float -> Pos -> Float =
 
 -- Use the function above, but shift the angle according to the direction in
 -- which we should be looking in.
-let expectedDistanceFront = lam m. lam angle. lam xy. lam ofs.
+let expectedDistanceFront = lam m. lam ofs. lam angle. lam xy.
   let xy = positionPlusOffset xy angle ofs in
   expectedDistanceAngle m angle xy
 
-let expectedDistanceRear = lam m. lam angle. lam xy. lam ofs.
+let expectedDistanceRear = lam m. lam ofs. lam angle. lam xy.
   let xy = positionPlusOffset xy angle ofs in
   expectedDistanceAngle m (addf angle pi) xy
 
-let expectedDistanceLeft = lam m. lam angle. lam xy. lam ofs.
+let expectedDistanceLeft = lam m. lam ofs. lam angle. lam xy.
   let xy = positionPlusOffset xy angle ofs in
   expectedDistanceAngle m (subf angle (divf pi 2.0)) xy
 
-let expectedDistanceRight = lam m. lam angle. lam xy. lam ofs.
+let expectedDistanceRight = lam m. lam ofs. lam angle. lam xy.
   let xy = positionPlusOffset xy angle ofs in
   expectedDistanceAngle m (addf angle (divf pi 2.0)) xy

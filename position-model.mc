@@ -10,6 +10,8 @@ include "room.mc"
 
 let neginf = negf inf
 
+type SensorData = (Float -> Pos -> Float, FloatTsv, Float, Float)
+
 -- Compute difference between timestamps and convert difference to a time
 -- in seconds.
 let deltaT : Int -> Int -> Float = lam t0. lam t1.
@@ -28,111 +30,127 @@ let estimatePositionAt : (Float, Float) -> Float -> Float -> Int -> Int -> (Floa
   ( addf x0 (mulf distForward (cos angle))
   , addf y0 (mulf distForward (sin angle)) )
 
-let positionModel : RoomMap -> Int -> Dist (Float, Float, Float) -> Int -> Float -> FloatTsv
-                 -> FloatTsv -> FloatTsv -> FloatTsv -> FloatTsv -> FloatTsv
-                 -> [FloatTsv] -> (Float, Float, Float) =
-  lam m. lam t0. lam posPrior. lam t1. lam speed. lam frontLeft. lam frontRight.
-  lam rearLeft. lam rearRight. lam leftSide. lam rightSide. lam steeringAngles.
+let transitionModel : Bool -> Pos -> Float -> Float -> Int -> Int
+                   -> (Pos, Float) =
+  lam isFirstEstimation. lam pos. lam speed. lam angle. lam t0. lam t1.
 
-  -- Get an estimate of the previous position of the car.
-  match assume posPrior with (x0, y0, angle) in
-  let initPos = (x0, y0) in
+  -- We do not apply the transition model in our first estimation. We assume
+  -- the car is standing still at this point.
+  if isFirstEstimation then (pos, angle)
+  else
 
-  match coordToPosition (roomDims m) with (maxX, maxY) in
-  let maxDist = sqrt (addf (mulf maxX maxX) (mulf maxY maxY)) in
+    -- There is some degree of uncertainty in what the actual speed and direction
+    -- are.
+    let newSpeed = assume (Gaussian speed 0.025) in
+    let newAngle = assume (Gaussian angle (divf pi 4.0)) in
 
-  -- There is some degree of uncertainty in what the actual speed is.
-  let speed = assume (Gaussian speed 0.025) in
+    -- Estimate the current position given speed and time difference, with some
+    -- uncertainty.
+    let newPos = estimatePositionAt pos speed newAngle t0 t1 in
 
-  -- We compute the new angle from the observed steering angle inputs since
-  -- the last estimation. The uncertainty is included in the observed
-  -- steering angles.
-  /-let expectedAngle =
-    if eqi t0 0 then angle
-    else
-      (foldl
-        (lam acc. lam angleObs.
-          match acc with (tsPrev, angle) in
-          match angleObs with (ts, steeringAngleObs) in
-          let steeringAngleObs = degToRad steeringAngleObs in
-          let steeringAngle = assume (Gaussian steeringAngleObs 0.01) in
-          --printLn (join [" ", float2string (deltaT tsPrev ts), " ", float2string speed, " ", float2string (tan steeringAngle)]);
-          let angleDelta = divf (mulf (mulf speed (deltaT tsPrev ts))
-                                      (tan steeringAngle)) 0.45 in
-          (ts, addf angle angleDelta))
-        (t0, angle) steeringAngles).1
+    (newPos, newAngle)
+
+let observeSensor : Float -> Pos -> SensorData -> Option Float =
+  lam angle. lam pos. lam sensorData.
+
+  match sensorData with (expectedDistance, (_, distObs), maxSensorRange, stdev) in
+  let distEst = expectedDistance angle pos in
+
+  -- NOTE(larshum, 2023-01-13): We handle three cases for each sensor
+  -- * If the observed distance is within its bounds, we consider how likely
+  --   the observation is given an estimated distance based on the position.
+  -- * Otherwise, it greater than the max distance. If the estimated distance
+  --   is less than this, the car cannot be at the current position.
+  -- * Otherwise, both the observed and estimated distances are greater than
+  --   the max distance. In this case, we do not get any information from the
+  --   sensor.
+  if ltf distObs maxSensorRange then
+    Some (gaussianLogPdf distEst stdev distObs)
+  else if ltf distEst maxSensorRange then
+    Some neginf
+  else None ()
+
+let observeSensors : Float -> Pos -> [SensorData] -> Float =
+  lam angle. lam pos. lam sensors.
+  let weights =
+    foldl
+      (lam acc. lam sensor.
+        match observeSensor angle pos sensor with Some w then cons w acc
+        else acc)
+      [] sensors
   in
-  let newAngle = assume (Gaussian expectedAngle 0.01) in-/
-  let newAngle = assume (Gaussian angle (divf pi 4.)) in
+  match max cmpFloat weights with Some maxw then
+    if eqf maxw neginf then neginf
+    else foldl addf 0.0 weights
+  else error "No sensors were provided to observeSensors"
 
-  -- Estimate the current position given speed and time difference, with some
-  -- uncertainty.
-  let pos = estimatePositionAt initPos speed newAngle t0 t1 in
+-- Compute the likelihood of making the provided observations at the
+-- estimated position of the car at their respective timestamps. The
+-- offsets of the sensors are taken into account when making these
+-- observations, as we seek to estimate the position relative to a
+-- central point of the car.
+let observationModel : RoomMap -> Bool -> Float -> Pos -> [FloatTsv]
+                    -> (Float, Float, Float) =
+  lam m. lam isFirstEstimation. lam angle. lam pos. lam observations.
+
+  match observations
+  with [frontLeft, frontRight, rearLeft, rearRight, leftSide, rightSide] in
+
+  let sensors = [
+    (expectedDistanceFront m frontLeftOfs, frontLeft, maxLongRangeSensorDist, 0.1),
+    (expectedDistanceFront m frontRightOfs, frontRight, maxLongRangeSensorDist, 0.1),
+    (expectedDistanceRear m rearLeftOfs, rearLeft, maxLongRangeSensorDist, 0.1),
+    (expectedDistanceRear m rearRightOfs, rearRight, maxLongRangeSensorDist, 0.1),
+    (expectedDistanceLeft m leftOfs, leftSide, maxShortRangeSensorDist, 0.05),
+    (expectedDistanceRight m rightOfs, rightSide, maxShortRangeSensorDist, 0.05)
+  ] in
+  if isFirstEstimation then
+    let cmpWeights = lam l. lam r.
+      match (l, r) with ((_, lw), (_, rw)) in
+      let d = subf lw rw in
+      if ltf d 0.0 then negi 1
+      else if gtf d 0.0 then 1
+      else 0
+    in
+    let step = divf pi 2.0 in
+    let angles = create 4 (lam i. mulf (int2float i) step) in
+    let weights = map (lam angle. (angle, observeSensors angle pos sensors)) angles in
+    match maxOrElse (lam. never) cmpWeights weights with (maxAngle, w) in
+    weight w;
+    (pos.0, pos.1, maxAngle)
+  else
+    weight (observeSensors angle pos sensors);
+    (pos.0, pos.1, angle)
+
+let positionModel : RoomMap -> Bool -> Int -> Int -> Dist (Float, Float, Float)
+                 -> Float -> FloatTsv -> FloatTsv -> FloatTsv -> FloatTsv
+                 -> FloatTsv -> FloatTsv -> (Float, Float, Float) =
+  lam m. lam isFirstEstimation. lam t0. lam t1. lam posPrior. lam speed.
+  lam frontLeft. lam frontRight.  lam rearLeft. lam rearRight. lam leftSide.
+  lam rightSide.
+  -- TODO: make use of the steering angles
+
+  -- Get the previously estimated position of the car, including its direction.
+  match assume posPrior with (x0, y0, direction) in
+  let coord = (x0, y0) in
+
+  match transitionModel isFirstEstimation coord speed direction t0 t1
+  with (coord, direction) in
+
+  let distanceObs =
+    [frontLeft, frontRight, rearLeft, rearRight, leftSide, rightSide]
+  in
 
   -- Check whether the estimated new position is within bounds. If it is not,
   -- we could not have moved there, so we weight with negative infinity.
-  (if withinRoomBounds m pos then
-
-    -- Compute the likelihood of making the provided observations at the
-    -- estimated position of the car at their respective timestamps. The
-    -- offsets of the sensors are taken into account when making these
-    -- observations, as we seek to estimate the position relative to a
-    -- central point of the car.
-
-    -- NOTE(larshum, 2023-01-13): We handle three cases for each sensor
-    -- * If the observed distance is within its bounds, we consider how likely
-    --   the observation is given an estimated distance based on the position.
-    -- * Otherwise, it greater than the max distance. If the estimated distance
-    --   is less than this, the car cannot be at the current position.
-    -- * Otherwise, both the observed and estimated distances are greater than
-    --   the max distance. In this case, we do not get any information from the
-    --   sensor.
-    match frontLeft with (tsFl, frontLeftObs) in
-    let frontLeftEst = expectedDistanceFront m newAngle pos frontLeftOfs in
-    (if ltf frontLeftObs maxLongRangeSensorDist then
-      observe frontLeftObs (Gaussian frontLeftEst 0.1)
-    else if ltf frontLeftEst maxLongRangeSensorDist then weight neginf
-    else ());
-
-    match frontRight with (tsFr, frontRightObs) in
-    let frontRightEst = expectedDistanceFront m newAngle pos frontRightOfs in
-    (if ltf frontRightObs maxLongRangeSensorDist then
-      observe frontRightObs (Gaussian frontRightEst 0.1)
-    else if ltf frontRightEst maxLongRangeSensorDist then weight neginf
-    else ());
-
-    match rearLeft with (tsRl, rearLeftObs) in
-    let rearLeftEst = expectedDistanceRear m newAngle pos rearLeftOfs in
-    (if ltf rearLeftObs maxLongRangeSensorDist then
-      observe rearLeftObs (Gaussian rearLeftEst 0.1)
-    else if ltf rearLeftEst maxLongRangeSensorDist then weight neginf
-    else ());
-
-    match rearRight with (tsRr, rearRightObs) in
-    let rearRightEst = expectedDistanceRear m newAngle pos rearRightOfs in
-    (if ltf rearRightObs maxLongRangeSensorDist then
-      observe rearRightObs (Gaussian rearRightEst 0.1)
-    else if ltf rearRightEst maxLongRangeSensorDist then weight neginf
-    else ());
-
-    match leftSide with (tsLeft, leftSideObs) in
-    let leftSideEst = expectedDistanceLeft m newAngle pos leftOfs in
-    (if ltf leftSideObs maxShortRangeSensorDist then
-      observe leftSideObs (Gaussian leftSideEst 0.05)
-    else if ltf leftSideEst maxShortRangeSensorDist then weight neginf
-    else ());
-
-    match rightSide with (tsRight, rightSideObs) in
-    let rightSideEst = expectedDistanceRight m newAngle pos rightOfs in
-    (if ltf rightSideObs maxShortRangeSensorDist then
-      observe rightSideObs (Gaussian rightSideEst 0.05)
-    else if ltf rightSideEst maxShortRangeSensorDist then weight neginf
-    else ())
+  if withinRoomBounds m coord then
+    let newPos = observationModel m isFirstEstimation direction coord distanceObs in
+    resample;
+    newPos
   else
-    weight neginf);
-
-  resample;
-  (pos.0, pos.1, newAngle)
+    weight neginf;
+    resample;
+    (coord.0, coord.1, direction)
 
 mexpr
 
@@ -194,7 +212,7 @@ loopFn state (lam i. lam state.
   else sdelay 100);
 
   match state with {
-    posPriorTsv = (prevTs, posPrior),
+    posPriorTsv = (tprev, posPrior),
     buffers = buffers
   } in
 
@@ -246,13 +264,17 @@ loopFn state (lam i. lam state.
 
     -- Compute the next timestamp based on the timestamp of the prior
     -- estimation and the period.
-    let t1 = addi prevTs (muli n (muli period 1000000)) in
+    let tcurr = addi tprev (muli n (muli period 1000000)) in
 
     let start = wallTimeMs () in
+    -- NOTE(larshum, 2023-01-23): If the previous timestamp is equal to the
+    -- initial timestamp we found, this is the first estimation. In the first
+    -- estimation, we use a different approach from later ones.
+    let isFirstEstimation = eqi t0 tprev in
     let posPosterior =
       infer (BPF {particles = 10000})
-        (lam. positionModel roomMap prevTs posPrior t1 speedObs fld frd rld
-                rrd sld srd buffers.steeringAngles)
+        (lam. positionModel roomMap isFirstEstimation tprev tcurr posPrior
+                speedObs fld frd rld rrd sld srd)
     in
     let endt = wallTimeMs () in
     printLn (join ["Inference time: ", float2string (divf (subf endt start) 1000.0)]);
@@ -260,18 +282,21 @@ loopFn state (lam i. lam state.
     printLn (join ["Expected value: x=", float2string x, ", y=", float2string y, ", angle=", float2string angle]);
     flushStdout ();
 
-    -- NOTE(larshum, 2023-01-23): This is a temporary fix to ensure that the
-    -- program does not crash if all particles end up with weight 0.
+    -- NOTE(larshum, 2023-01-23): This code ensures that the program does not
+    -- crash while recording observations due to all particles having weight 0.
+    -- If we are replaying, we stop the program and save the estimations we
+    -- have done so far to buffers, instead of letting it crash later.
     let posteriorTsv =
       let posPosterior =
         if distEmpiricalDegenerate posPosterior then
           if options.replaying then
             printLn "Estimated posterior has only particles with weight 0";
-            saveBuffersAndExit 2
+            saveBuffersAndExit 2;
+            never
           else positionPrior
         else posPosterior
       in
-      (t1, posPosterior)
+      (tcurr, posPosterior)
     in
 
     writeData obsPosition posteriorTsv;
