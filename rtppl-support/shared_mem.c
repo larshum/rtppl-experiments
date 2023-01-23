@@ -224,14 +224,14 @@ uint8_t sm_write(shared_mem_t* sm, void* in_data) {
  */
 uint8_t sm_local_init(shared_mem_t* sm) {
 
-  sm->mgmt = malloc(sizeof(sm_mgmt_t));
+  sm->mgmt = (sm_mgmt_t*)malloc(sizeof(sm_mgmt_t));
 
   //copy the name
-  sm->mgmt->smName = malloc(strlen(sm->name) + strlen(SM_STRING) + 1);
+  sm->mgmt->smName = (char*)malloc(strlen(sm->name) + strlen(SM_STRING) + 1);
   sprintf(sm->mgmt->smName, "%s%s", sm->name, SM_STRING);
 
   //create the mutex name
-  sm->mgmt->mutexName = malloc(strlen(sm->name) + strlen(MUTEX_STRING) + 1);
+  sm->mgmt->mutexName = (char*)malloc(strlen(sm->name) + strlen(MUTEX_STRING) + 1);
   sprintf(sm->mgmt->mutexName, "%s%s", sm->name, MUTEX_STRING);
 
 

@@ -60,12 +60,12 @@ shared_mem_t sm_regs[] = {
     .size = sizeof(sensor_val_t),
     .mgmt  = NULL
   },{
-    .name = "ObservedDistanceFront",
-    .size = 1 << 16,
+    .name = "TrueXCoord",
+    .size = sizeof(sensor_val_t),
     .mgmt = NULL
   },{
-    .name = "ObservedDistanceBack",
-    .size = 1 << 16,
+    .name = "TrueYCoord",
+    .size = sizeof(sensor_val_t),
     .mgmt = NULL
   },{
     .name = "ObservedPosition",

@@ -148,7 +148,7 @@ in
 let inputs = [
   distanceFrontLeft, distanceFrontRight, distanceBackLeft, distanceBackRight,
   distanceSideLeft, distanceSideRight, speedValLeft, speedValRight,
-  steeringAngle, startTime
+  steeringAngle, startTime, trueXCoordinate, trueYCoordinate
 ] in
 let outputs = [obsPosition] in
 let options = {options with bufferOnlyOutputs = setOfSeq subi [obsPosition]} in
@@ -163,7 +163,9 @@ let emptyBuffers = lam.
   , sideRightDists = toList []
   , leftSpeeds = toList []
   , rightSpeeds = toList []
-  , steeringAngles = toList [] }
+  , steeringAngles = toList []
+  , x = toList []
+  , y = toList [] }
 in
 
 match readFloatData startTime with (t0, _) in
@@ -181,7 +183,7 @@ let period = 100 in
 -- position in 'init-pos.mc'.
 let positionPrior = initPosDist roomMap in
 let state = {
-  posPriorTsv = (0, positionPrior),
+  posPriorTsv = (t0, positionPrior),
   buffers = emptyBuffers ()
 } in
 writeData obsPosition state.posPriorTsv;
@@ -206,6 +208,11 @@ loopFn state (lam i. lam state.
   let speedRight = readFloatData speedValRight in
   let angle = readFloatData steeringAngle in
 
+  -- NOTE(larshum, 2023-01-20): We do not make use of these in the model. They
+  -- are only used in a postprocessing step.
+  let trueX = readFloatData trueXCoordinate in
+  let trueY = readFloatData trueYCoordinate in
+
   let buffers = {buffers with
     frontLeftDists = snoc buffers.frontLeftDists frontLeft,
     frontRightDists = snoc buffers.frontRightDists frontRight,
@@ -215,7 +222,9 @@ loopFn state (lam i. lam state.
     sideRightDists = snoc buffers.sideRightDists sideRight,
     leftSpeeds = snoc buffers.leftSpeeds speedLeft,
     rightSpeeds = snoc buffers.rightSpeeds speedRight,
-    steeringAngles = snoc buffers.steeringAngles angle
+    steeringAngles = snoc buffers.steeringAngles angle,
+    x = snoc buffers.x trueX,
+    y = snoc buffers.y trueY
   } in
 
   if eqi (modi i n) 0 then
@@ -251,16 +260,21 @@ loopFn state (lam i. lam state.
     printLn (join ["Expected value: x=", float2string x, ", y=", float2string y, ", angle=", float2string angle]);
     flushStdout ();
 
-    let posteriorTsv = (t1, posPosterior) in
+    -- NOTE(larshum, 2023-01-23): This is a temporary fix to ensure that the
+    -- program does not crash if all particles end up with weight 0.
+    let posteriorTsv =
+      let posPosterior =
+        if distEmpiricalDegenerate posPosterior then
+          if options.replaying then
+            printLn "Estimated posterior has only particles with weight 0";
+            saveBuffersAndExit 2
+          else positionPrior
+        else posPosterior
+      in
+      (t1, posPosterior)
+    in
 
     writeData obsPosition posteriorTsv;
-
-    -- If all estimated positions have weight 0, we report that the program
-    -- terminated due to this and save buffers to files.
-    (if distEmpiricalDegenerate posPosterior then
-      printLn "Estimated posterior distribution has only positions with weight 0";
-      saveBuffersAndExit 2
-    else ());
 
     {state with posPriorTsv = posteriorTsv, buffers = emptyBuffers ()}
 

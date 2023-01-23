@@ -42,7 +42,8 @@ let printPositionDistributionBuffer : String -> () = lam id.
   in
   let buf = _loadBuffer id in
   let printTsv = lam tsv.
-    match tsv with (_, dist) in
+    match tsv with (ts, dist) in
+    printLn (int2string ts);
     printDist printPosSample (unsafeCoerce dist)
   in
   iter printTsv buf
@@ -73,7 +74,7 @@ let cmpFloat : Float -> Float -> Int = lam l. lam r.
 let floatAvg : Float -> Float -> Float = lam l. lam r.
   divf (addf l r) 2.0
 
-let cmpTsv : (Int, Float) -> (Int, Float) -> Int = lam l. lam r.
+let cmpTsv : FloatTsv -> FloatTsv -> Int = lam l. lam r.
   if gtf l.1 r.1 then 1
   else if ltf l.1 r.1 then negi 1
   else 0

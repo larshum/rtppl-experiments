@@ -42,8 +42,8 @@ extern shared_mem_t sm_regs[];
 #define SPEED_VAL_RIGHT       (&sm_regs[7])
 #define STEERING_ANGLE        (&sm_regs[8])
 #define START_TIME	          (&sm_regs[9])
-#define OBS_DISTANCE_FRONT    (&sm_regs[10])
-#define OBS_DISTANCE_BACK     (&sm_regs[11])
+#define TRUE_X_COORD          (&sm_regs[10])
+#define TRUE_Y_COORD          (&sm_regs[11])
 #define OBS_POSITION          (&sm_regs[12])
 
 
