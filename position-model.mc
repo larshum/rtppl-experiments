@@ -12,6 +12,21 @@ let neginf = negf inf
 
 type SensorData = (Float -> Pos -> Float, FloatTsv, Float, Float)
 
+type DistanceObs = {
+  frontLeft : FloatTsv,
+  frontRight : FloatTsv,
+  rearLeft : FloatTsv,
+  rearRight : FloatTsv,
+  sideLeft : FloatTsv,
+  sideRight : FloatTsv
+}
+
+type WheelObs = [{
+  t : Int,
+  speed : Float,
+  steeringAngle : Float
+}]
+
 -- Compute difference between timestamps and convert difference to a time
 -- in seconds.
 let deltaT : Int -> Int -> Float = lam t0. lam t1.
@@ -30,14 +45,18 @@ let estimatePositionAt : (Float, Float) -> Float -> Float -> Int -> Int -> (Floa
   ( addf x0 (mulf distForward (cos angle))
   , addf y0 (mulf distForward (sin angle)) )
 
-let transitionModel : Bool -> Pos -> Float -> Float -> Int -> Int
+let transitionModel : Bool -> WheelObs -> Pos -> Float -> Int -> Int
                    -> (Pos, Float) =
-  lam isFirstEstimation. lam pos. lam speed. lam angle. lam t0. lam t1.
+  lam isFirstEstimation. lam wheelObs. lam pos. lam angle. lam t0. lam t1.
 
   -- We do not apply the transition model in our first estimation. We assume
   -- the car is standing still at this point.
   if isFirstEstimation then (pos, angle)
   else
+
+    -- TODO: make better use of the provided sensor information, including the
+    -- steering angles...
+    let speed = (medianTsv (map (lam x. (x.t, x.speed)) wheelObs)).1 in
 
     -- There is some degree of uncertainty in what the actual speed and direction
     -- are.
@@ -89,20 +108,17 @@ let observeSensors : Float -> Pos -> [SensorData] -> Float =
 -- offsets of the sensors are taken into account when making these
 -- observations, as we seek to estimate the position relative to a
 -- central point of the car.
-let observationModel : RoomMap -> Bool -> Float -> Pos -> [FloatTsv]
+let observationModel : RoomMap -> Bool -> Float -> Pos -> DistanceObs
                     -> (Float, Float, Float) =
-  lam m. lam isFirstEstimation. lam angle. lam pos. lam observations.
-
-  match observations
-  with [frontLeft, frontRight, rearLeft, rearRight, leftSide, rightSide] in
+  lam m. lam isFirstEstimation. lam angle. lam pos. lam distanceObs.
 
   let sensors = [
-    (expectedDistanceFront m frontLeftOfs, frontLeft, maxLongRangeSensorDist, 0.1),
-    (expectedDistanceFront m frontRightOfs, frontRight, maxLongRangeSensorDist, 0.1),
-    (expectedDistanceRear m rearLeftOfs, rearLeft, maxLongRangeSensorDist, 0.1),
-    (expectedDistanceRear m rearRightOfs, rearRight, maxLongRangeSensorDist, 0.1),
-    (expectedDistanceLeft m leftOfs, leftSide, maxShortRangeSensorDist, 0.05),
-    (expectedDistanceRight m rightOfs, rightSide, maxShortRangeSensorDist, 0.05)
+    (expectedDistanceFront m frontLeftOfs, distanceObs.frontLeft, maxLongRangeSensorDist, 0.1),
+    (expectedDistanceFront m frontRightOfs, distanceObs.frontRight, maxLongRangeSensorDist, 0.1),
+    (expectedDistanceRear m rearLeftOfs, distanceObs.rearLeft, maxLongRangeSensorDist, 0.1),
+    (expectedDistanceRear m rearRightOfs, distanceObs.rearRight, maxLongRangeSensorDist, 0.1),
+    (expectedDistanceLeft m leftOfs, distanceObs.sideLeft, maxShortRangeSensorDist, 0.05),
+    (expectedDistanceRight m rightOfs, distanceObs.sideRight, maxShortRangeSensorDist, 0.05)
   ] in
   if isFirstEstimation then
     let cmpWeights = lam l. lam r.
@@ -123,23 +139,16 @@ let observationModel : RoomMap -> Bool -> Float -> Pos -> [FloatTsv]
     (pos.0, pos.1, angle)
 
 let positionModel : RoomMap -> Bool -> Int -> Int -> Dist (Float, Float, Float)
-                 -> Float -> FloatTsv -> FloatTsv -> FloatTsv -> FloatTsv
-                 -> FloatTsv -> FloatTsv -> (Float, Float, Float) =
-  lam m. lam isFirstEstimation. lam t0. lam t1. lam posPrior. lam speed.
-  lam frontLeft. lam frontRight.  lam rearLeft. lam rearRight. lam leftSide.
-  lam rightSide.
-  -- TODO: make use of the steering angles
+                 -> DistanceObs -> WheelObs -> (Float, Float, Float) =
+  lam m. lam isFirstEstimation. lam t0. lam t1. lam posPrior. lam distanceObs.
+  lam wheelObs.
 
   -- Get the previously estimated position of the car, including its direction.
   match assume posPrior with (x0, y0, direction) in
   let coord = (x0, y0) in
 
-  match transitionModel isFirstEstimation coord speed direction t0 t1
+  match transitionModel isFirstEstimation wheelObs coord direction t0 t1
   with (coord, direction) in
-
-  let distanceObs =
-    [frontLeft, frontRight, rearLeft, rearRight, leftSide, rightSide]
-  in
 
   -- Check whether the estimated new position is within bounds. If it is not,
   -- we could not have moved there, so we weight with negative infinity.
@@ -247,20 +256,32 @@ loopFn state (lam i. lam state.
 
   if eqi (modi i n) 0 then
 
-    let fld = medianTsv buffers.frontLeftDists in
-    let frd = medianTsv buffers.frontRightDists in
-    let rld = medianTsv buffers.rearLeftDists in
-    let rrd = medianTsv buffers.rearRightDists in
-    let sld = medianTsv buffers.sideLeftDists in
-    let srd = medianTsv buffers.sideRightDists in
-    let ls = medianTsv buffers.leftSpeeds in
-    let rs = medianTsv buffers.rightSpeeds in
-
-    -- NOTE(larshum, 2022-11-14): We assume that the observed speed is constant
-    -- during the whole period. It is computed as the average of the median
-    -- speed of the observations of the left and right wheels.
-    let speedRPM = divf (addf ls.1 rs.1) 2.0 in
-    let speedObs = divf (mulf speedRPM wheelCircumference) 60.0 in
+    let distanceObs = {
+      frontLeft = medianTsv buffers.frontLeftDists,
+      frontRight = medianTsv buffers.frontRightDists,
+      rearLeft = medianTsv buffers.rearLeftDists,
+      rearRight = medianTsv buffers.rearRightDists,
+      sideLeft = medianTsv buffers.sideLeftDists,
+      sideRight = medianTsv buffers.sideRightDists
+    } in
+    let wheelObs =
+      -- NOTE(larshum, 2023-01-24): We only consider the wheel observations
+      -- where the timestamps of the speed of the wheels and the steering angle
+      -- are equal.
+      let avgSpeed =
+        create (length buffers.leftSpeeds)
+          (lam i.
+            match ( get buffers.leftSpeeds i, get buffers.rightSpeeds i
+                  , get buffers.steeringAngles i )
+            with ((t1, ls), (t2, rs), (t3, sa)) in
+            if and (eqi t1 t2) (eqi t2 t3) then
+              let speedRPM = divf (addf ls rs) 2.0 in
+              let speedMs = divf (mulf speedRPM wheelCircumference) 60.0 in
+              Some {t = t1, speed = speedMs, steeringAngle = sa}
+            else None ())
+      in
+      filterOption avgSpeed
+    in
 
     -- Compute the next timestamp based on the timestamp of the prior
     -- estimation and the period.
@@ -274,7 +295,7 @@ loopFn state (lam i. lam state.
     let posPosterior =
       infer (BPF {particles = 10000})
         (lam. positionModel roomMap isFirstEstimation tprev tcurr posPrior
-                speedObs fld frd rld rrd sld srd)
+                            distanceObs wheelObs)
     in
     let endt = wallTimeMs () in
     printLn (join ["Inference time: ", float2string (divf (subf endt start) 1000.0)]);
