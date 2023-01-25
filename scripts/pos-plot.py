@@ -72,7 +72,11 @@ if len(sys.argv) > 4:
             fig, axs = plt.subplots(1)
             data = np.zeros([rows, cols])
             ts = int(inputs[i])
-            true_pos = pos[bisect.bisect(pos, ts, key=lambda k: k[2])]
+            idx = bisect.bisect(pos, ts, key=lambda k: k[2])
+            if idx == len(pos):
+                true_pos = pos[-1]
+            else:
+                true_pos = pos[idx]
             true_x = int(10 * true_pos[0])
             true_y = int(10 * true_pos[1])
             for line in inputs[i+1:i+(batchsz+1)]:

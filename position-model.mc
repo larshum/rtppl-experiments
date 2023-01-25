@@ -58,8 +58,8 @@ let transitionModel : Bool -> WheelObs -> (Int, Float, Float, Float) -> Int
 
       -- Estimate the new x- and y-coordinates based on the previous
       -- estimations.
-      let x1 = addf x0 (mulf distTravelled (cos direction)) in
-      let y1 = addf y0 (mulf distTravelled (sin direction)) in
+      let x1 = addf x0 (mulf distTravelled (cos newDirection)) in
+      let y1 = addf y0 (mulf distTravelled (sin newDirection)) in
       let newPos = (t1, x1, y1, newDirection) in
       (newPos, newPos)
     in
