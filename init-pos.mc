@@ -29,16 +29,16 @@ let findNonObstructedBlocks : RoomMap -> [(Int, Int)] = lam m.
 
 -- Given a room map, chooses a random position on the map, among those that are
 -- not obstructed.
-let initialPositionModel : [(Int, Int)] -> (Float, Float, Float) =
+let initialPositionModel : [(Int, Int)] -> State =
   lam nonObstructedBlocks.
   match randElem nonObstructedBlocks with Some coord then
     match coordToPosition coord with (x, y) in
     let xOfs = assume (Uniform 0. 0.1) in
     let yOfs = assume (Uniform 0. 0.1) in
-    let angle = assume (Uniform 0. (mulf 2. pi)) in
-    (addf x xOfs, addf y yOfs, angle)
+    let direction = assume (Uniform 0. (mulf 2. pi)) in
+    {x = addf x xOfs, y = addf y yOfs, direction = direction}
   else error "Provided room map is fully obstructed"
 
-let initPosDist : RoomMap -> Dist (Float, Float, Float) = lam m.
+let initPosDist : RoomMap -> Dist State = lam m.
   let blocks = findNonObstructedBlocks m in
   infer (Importance {particles = 10000}) (lam. initialPositionModel blocks)

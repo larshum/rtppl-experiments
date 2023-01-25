@@ -10,7 +10,7 @@ include "room.mc"
 
 let neginf = negf inf
 
-type SensorData = (Float -> Pos -> Float, FloatTsv, Float, Float)
+type SensorData = (State -> Float, FloatTsv, Float, Float)
 
 type DistanceObs = {
   frontLeft : FloatTsv,
@@ -27,53 +27,71 @@ type WheelObs = [{
   steeringAngle : Float
 }]
 
+let tan = lam rad. divf (sin rad) (cos rad)
+
 -- Compute difference between timestamps and convert difference to a time
 -- in seconds.
 let deltaT : Int -> Int -> Float = lam t0. lam t1.
-  if eqi t0 0 then 0.0
-  else divf (int2float (subi t1 t0)) 1000000000.0
+  divf (int2float (subi t1 t0)) 1000000000.0
 
-let estimatePositionAt : (Float, Float) -> Float -> Float -> Int -> Int -> (Float, Float) =
-  lam initialPos. lam speed. lam angle. lam t0. lam t1.
-  match initialPos with (x0, y0) in
-
-  -- Estimate the distance travelled based on the estimated speed and the time
-  -- difference. Given the angle in which the car is travelling, we use this to
-  -- estimate the new position of the car.
-  let distEst = mulf speed (deltaT t0 t1) in
-  let distForward = assume (Gaussian distEst (mulf distEst 0.1)) in
-  ( addf x0 (mulf distForward (cos angle))
-  , addf y0 (mulf distForward (sin angle)) )
-
-let transitionModel : Bool -> WheelObs -> Pos -> Float -> Int -> Int
-                   -> (Pos, Float) =
-  lam isFirstEstimation. lam wheelObs. lam pos. lam angle. lam t0. lam t1.
+let transitionModel : Bool -> WheelObs -> (Int, Float, Float, Float) -> Int
+                   -> [(Int, Float, Float, Float)] =
+  lam isFirstEstimation. lam wheelObs. lam position. lam t1.
 
   -- We do not apply the transition model in our first estimation. We assume
   -- the car is standing still at this point.
-  if isFirstEstimation then (pos, angle)
+  if isFirstEstimation then [position]
   else
+    let f = lam pos. lam obs.
+      match pos with (t0, x0, y0, direction) in
+      match obs with {t = t1, speed = speed, steeringAngle = steeringAngle} in
 
-    -- TODO: make better use of the provided sensor information, including the
-    -- steering angles...
-    let speed = (medianTsv (map (lam x. (x.t, x.speed)) wheelObs)).1 in
+      -- We assume there is a small amount of uncertainty in the observed speed
+      -- and steering angle.
+      let newSpeed = assume (Gaussian speed 0.01) in
+      let steeringAngle = assume (Gaussian steeringAngle 0.05) in
 
-    -- There is some degree of uncertainty in what the actual speed and direction
-    -- are.
-    let newSpeed = assume (Gaussian speed 0.025) in
-    let newAngle = assume (Gaussian angle (divf pi 4.0)) in
+      -- Estimate the new direction the car is facing based on the estimates.
+      let distTravelled = mulf newSpeed (deltaT t0 t1) in
+      let directionDelta = divf (mulf distTravelled (tan steeringAngle)) 0.45 in
+      let newDirection = addf direction directionDelta in
 
-    -- Estimate the current position given speed and time difference, with some
-    -- uncertainty.
-    let newPos = estimatePositionAt pos speed newAngle t0 t1 in
+      -- Estimate the new x- and y-coordinates based on the previous
+      -- estimations.
+      let x1 = addf x0 (mulf distTravelled (cos direction)) in
+      let y1 = addf y0 (mulf distTravelled (sin direction)) in
+      let newPos = (t1, x1, y1, newDirection) in
+      (newPos, newPos)
+    in
+    match mapAccumL f position wheelObs with (_, positions) in
+    positions
 
-    (newPos, newAngle)
+let findClosestPositionInTime : [(Int, Float, Float, Float)] -> Int
+                             -> State =
+  lam positions. lam t.
+  let absDiff = lam p1. lam p2.
+    let d1 = absi (subi p1.0 t) in
+    let d2 = absi (subi p2.0 t) in
+    if lti d1 d2 then 1
+    else if gti d1 d2 then negi 1
+    else 0
+  in
+  match min absDiff positions with Some (_, x, y, direction) then
+    {x = x, y = y, direction = direction}
+  else error "Transition model made no position estimations"
 
-let observeSensor : Float -> Pos -> SensorData -> Option Float =
-  lam angle. lam pos. lam sensorData.
+let observeSensor : [(Int, Float, Float, Float)] -> SensorData -> Option Float =
+  lam positions. lam sensorData.
 
-  match sensorData with (expectedDistance, (_, distObs), maxSensorRange, stdev) in
-  let distEst = expectedDistance angle pos in
+  match sensorData with (expectedDistance, (t, distObs), maxSensorRange, stdev) in
+
+  -- NOTE(larshum, 2023-01-24): Choose the intermediate position whose
+  -- timestamp is the closest to that of the observation. This should result in
+  -- a more accurate estimation of likelihood, in particular when the car is
+  -- moving around.
+  let state = findClosestPositionInTime positions t in
+
+  let distEst = expectedDistance state in
 
   -- NOTE(larshum, 2023-01-13): We handle three cases for each sensor
   -- * If the observed distance is within its bounds, we consider how likely
@@ -85,32 +103,36 @@ let observeSensor : Float -> Pos -> SensorData -> Option Float =
   --   sensor.
   if ltf distObs maxSensorRange then
     Some (gaussianLogPdf distEst stdev distObs)
-  else if ltf distEst maxSensorRange then
+  else if ltf distEst (mulf 0.9 maxSensorRange) then
     Some neginf
   else None ()
 
-let observeSensors : Float -> Pos -> [SensorData] -> Float =
-  lam angle. lam pos. lam sensors.
+let observeSensors : [(Int, Float, Float, Float)] -> [SensorData] -> Float =
+  lam positions. lam sensors.
   let weights =
     foldl
       (lam acc. lam sensor.
-        match observeSensor angle pos sensor with Some w then cons w acc
+        match observeSensor positions sensor with Some w then
+          cons w acc
         else acc)
       [] sensors
   in
   match max cmpFloat weights with Some maxw then
     if eqf maxw neginf then neginf
     else foldl addf 0.0 weights
-  else error "No sensors were provided to observeSensors"
+  else 0.0
 
 -- Compute the likelihood of making the provided observations at the
 -- estimated position of the car at their respective timestamps. The
 -- offsets of the sensors are taken into account when making these
 -- observations, as we seek to estimate the position relative to a
 -- central point of the car.
-let observationModel : RoomMap -> Bool -> Float -> Pos -> DistanceObs
-                    -> (Float, Float, Float) =
-  lam m. lam isFirstEstimation. lam angle. lam pos. lam distanceObs.
+let observationModel : RoomMap -> Bool -> [(Int, Float, Float, Float)] -> DistanceObs
+                    -> State =
+  lam m. lam isFirstEstimation. lam positions. lam distanceObs.
+
+  match last positions with (_, x, y, direction) in
+  let pos = (x, y) in
 
   let sensors = [
     (expectedDistanceFront m frontLeftOfs, distanceObs.frontLeft, maxLongRangeSensorDist, 0.1),
@@ -129,37 +151,47 @@ let observationModel : RoomMap -> Bool -> Float -> Pos -> DistanceObs
       else 0
     in
     let step = divf pi 2.0 in
-    let angles = create 4 (lam i. mulf (int2float i) step) in
-    let weights = map (lam angle. (angle, observeSensors angle pos sensors)) angles in
-    match maxOrElse (lam. never) cmpWeights weights with (maxAngle, w) in
+    let directions = create 4 (lam i. mulf (int2float i) step) in
+    let weights =
+      map
+        (lam direction.
+          let positions = map (lam p. {p with #label"3" = direction}) positions in
+          (direction, observeSensors positions sensors))
+        directions
+    in
+    match maxOrElse (lam. never) cmpWeights weights with (maxDirection, w) in
     weight w;
-    (pos.0, pos.1, maxAngle)
+    {x = x, y = y, direction = maxDirection}
   else
-    weight (observeSensors angle pos sensors);
-    (pos.0, pos.1, angle)
+    weight (observeSensors positions sensors);
+    {x = x, y = y, direction = direction}
 
-let positionModel : RoomMap -> Bool -> Int -> Int -> Dist (Float, Float, Float)
-                 -> DistanceObs -> WheelObs -> (Float, Float, Float) =
+let positionModel : RoomMap -> Bool -> Int -> Int -> Dist State -> DistanceObs
+                 -> WheelObs -> State =
   lam m. lam isFirstEstimation. lam t0. lam t1. lam posPrior. lam distanceObs.
   lam wheelObs.
 
   -- Get the previously estimated position of the car, including its direction.
-  match assume posPrior with (x0, y0, direction) in
-  let coord = (x0, y0) in
+  match assume posPrior with {x = x, y = y, direction = direction} in
+  let prevPosition = (t0, x, y, direction) in
 
-  match transitionModel isFirstEstimation wheelObs coord direction t0 t1
-  with (coord, direction) in
+  let positions = transitionModel isFirstEstimation wheelObs prevPosition t1 in
 
-  -- Check whether the estimated new position is within bounds. If it is not,
-  -- we could not have moved there, so we weight with negative infinity.
-  if withinRoomBounds m coord then
-    let newPos = observationModel m isFirstEstimation direction coord distanceObs in
-    resample;
-    newPos
-  else
-    weight neginf;
-    resample;
-    (coord.0, coord.1, direction)
+  -- Verify that all intermediate positions are within the bounds of the map.
+  -- If any intermediate position is not, it means the car would have moved
+  -- into a wall. As this is impossible, we weight with minus infinity in such
+  -- cases.
+  let coords = map (lam p. (p.1, p.2)) positions in
+  let newPos =
+    if forAll (withinRoomBounds m) coords then
+      observationModel m isFirstEstimation positions distanceObs
+    else
+      weight neginf;
+      match last positions with (_, x, y, direction) in
+      {x = x, y = y, direction = direction}
+  in
+  resample;
+  newPos
 
 mexpr
 
@@ -175,7 +207,7 @@ in
 let inputs = [
   distanceFrontLeft, distanceFrontRight, distanceBackLeft, distanceBackRight,
   distanceSideLeft, distanceSideRight, speedValLeft, speedValRight,
-  steeringAngle, startTime, trueXCoordinate, trueYCoordinate
+  steeringAngle, startTime, trueXCoordinate, trueYCoordinate, trueDirection
 ] in
 let outputs = [obsPosition] in
 let options = {options with bufferOnlyOutputs = setOfSeq subi [obsPosition]} in
@@ -192,7 +224,8 @@ let emptyBuffers = lam.
   , rightSpeeds = toList []
   , steeringAngles = toList []
   , x = toList []
-  , y = toList [] }
+  , y = toList []
+  , d = toList [] }
 in
 
 match readFloatData startTime with (t0, _) in
@@ -239,6 +272,7 @@ loopFn state (lam i. lam state.
   -- are only used in a postprocessing step.
   let trueX = readFloatData trueXCoordinate in
   let trueY = readFloatData trueYCoordinate in
+  let trueD = readFloatData trueDirection in
 
   let buffers = {buffers with
     frontLeftDists = snoc buffers.frontLeftDists frontLeft,
@@ -251,7 +285,8 @@ loopFn state (lam i. lam state.
     rightSpeeds = snoc buffers.rightSpeeds speedRight,
     steeringAngles = snoc buffers.steeringAngles angle,
     x = snoc buffers.x trueX,
-    y = snoc buffers.y trueY
+    y = snoc buffers.y trueY,
+    d = snoc buffers.d trueD
   } in
 
   if eqi (modi i n) 0 then
@@ -265,22 +300,17 @@ loopFn state (lam i. lam state.
       sideRight = medianTsv buffers.sideRightDists
     } in
     let wheelObs =
-      -- NOTE(larshum, 2023-01-24): We only consider the wheel observations
-      -- where the timestamps of the speed of the wheels and the steering angle
-      -- are equal.
-      let avgSpeed =
-        create (length buffers.leftSpeeds)
-          (lam i.
-            match ( get buffers.leftSpeeds i, get buffers.rightSpeeds i
-                  , get buffers.steeringAngles i )
-            with ((t1, ls), (t2, rs), (t3, sa)) in
-            if and (eqi t1 t2) (eqi t2 t3) then
-              let speedRPM = divf (addf ls rs) 2.0 in
-              let speedMs = divf (mulf speedRPM wheelCircumference) 60.0 in
-              Some {t = t1, speed = speedMs, steeringAngle = sa}
-            else None ())
-      in
-      filterOption avgSpeed
+      -- NOTE(larshum, 2023-01-24): Wheel observations are made at roughly the
+      -- same point in time, but they may have slight differences. We choose to
+      -- use the maximum out of the three as the combined timestamp.
+      create (length buffers.leftSpeeds)
+        (lam i.
+          match ( get buffers.leftSpeeds i, get buffers.rightSpeeds i
+                , get buffers.steeringAngles i )
+          with ((t1, ls), (t2, rs), (t3, sa)) in
+          let speedRPM = divf (addf ls rs) 2.0 in
+          let speedMs = divf (mulf speedRPM wheelCircumference) 60.0 in
+          {t = maxi (maxi t1 t2) t3, speed = speedMs, steeringAngle = negf (degToRad sa)})
     in
 
     -- Compute the next timestamp based on the timestamp of the prior
@@ -299,8 +329,12 @@ loopFn state (lam i. lam state.
     in
     let endt = wallTimeMs () in
     printLn (join ["Inference time: ", float2string (divf (subf endt start) 1000.0)]);
-    match expectedValuePosDist posPosterior with (x, y, angle) in
-    printLn (join ["Expected value: x=", float2string x, ", y=", float2string y, ", angle=", float2string angle]);
+    match expectedValuePosDist posPosterior with {x = x, y = y, direction = d} in
+    printLn (join ["T : ", int2string tcurr]);
+    printLn (join ["Expected value: x=", float2string x, ", y=", float2string y, ", angle=", float2string d]);
+    printLn (join ["True value    : x=", float2string (last buffers.x).1,
+                   ", y=", float2string (last buffers.y).1,
+                   ", angle=", float2string (last buffers.d).1]);
     flushStdout ();
 
     -- NOTE(larshum, 2023-01-23): This code ensures that the program does not
@@ -311,7 +345,10 @@ loopFn state (lam i. lam state.
       let posPosterior =
         if distEmpiricalDegenerate posPosterior then
           if options.replaying then
+            match distEmpiricalSamples posPosterior with (samples, _) in
             printLn "Estimated posterior has only particles with weight 0";
+            printLn (int2string (length samples));
+            iter (lam s. printLn (join [float2string s.x, " ", float2string s.y])) samples;
             saveBuffersAndExit 2;
             never
           else positionPrior

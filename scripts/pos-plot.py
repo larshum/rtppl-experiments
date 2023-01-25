@@ -95,6 +95,6 @@ if len(sys.argv) > 4:
             plt.close()
             i = i + batchsz + 1
     else:
-        print("Invalid number of input lines")
+        print(f"Invalid number of input lines: {len(inputs)}")
 else:
     print("Invalid number of arguments")

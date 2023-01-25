@@ -2,6 +2,8 @@ include "buffers.mc"
 
 type FloatTsv = (Int, Float)
 
+type State = {x : Float, y : Float, direction : Float}
+
 let loopFn : all a. a -> (Int -> a -> a) -> a = lam v. lam f.
   recursive let work = lam i. lam v.
     let vnext = f i v in
@@ -97,18 +99,19 @@ let median : all a. (a -> a -> Int) -> (a -> a -> a) -> [a] -> a =
 
 let medianTsv : [FloatTsv] -> FloatTsv = median cmpTsv tsvAvg
 
-let expectedValuePosDist : Dist (Float, Float, Float) -> (Float, Float, Float) = lam posPosterior.
+let expectedValuePosDist : Dist State -> State = lam posPosterior.
   match distEmpiricalSamples posPosterior with (samples, weights) in
   foldl
     (lam acc. lam t.
-      match acc with (xAcc, yAcc, angleAcc) in
-      match t with ((x, y, angle), w) in
+      match t with (state, w) in
       let nw = exp w in
-      (addf xAcc (mulf nw x), addf yAcc (mulf nw y), addf angleAcc (mulf nw angle)))
-    (0.0, 0.0, 0.0) (zip samples weights)
+      {acc with x = addf acc.x (mulf nw state.x),
+                y = addf acc.y (mulf nw state.y),
+                direction = addf acc.direction (mulf nw state.direction)})
+    {x = 0.0, y = 0.0, direction = 0.0} (zip samples weights)
 
 let degToRad = lam angle.
-  divf (mulf angle 180.0) pi
+  divf (mulf angle pi) 180.0
 
 let radToDeg = lam angle.
-  divf (mulf angle pi) 180.0
+  divf (mulf angle 180.0) pi

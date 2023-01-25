@@ -1,6 +1,8 @@
 include "math.mc"
 include "string.mc"
 
+include "shared.mc"
+
 type Pos = (Float, Float)
 
 -- We encode the room using a tensor of boolean values encoding each 10x10 cm
@@ -73,8 +75,8 @@ let withinRoomBounds : RoomMap -> Pos -> Bool = lam m. lam xy.
     false
   else not (get (get m row) col)
 
-let positionPlusOffset : Pos -> Float -> (Float, Float) -> Pos =
-  lam pos. lam angle. lam offset.
+let positionPlusOffset : (Float, Float) -> State -> State =
+  lam offset. lam state.
 
   -- Compute the offset angle beta from the provided angle, due to the offsets
   -- of the sensor.
@@ -85,37 +87,37 @@ let positionPlusOffset : Pos -> Float -> (Float, Float) -> Pos =
   let d = divf offset.0 (sin beta) in
 
   -- Compute the updated position
-  let angle = addf angle beta in
-  (addf pos.0 (mulf d (cos angle)), addf pos.1 (mulf d (sin angle)))
+  let direction = addf state.direction beta in
+  {state with x = addf state.x (mulf d (cos direction)),
+              y = addf state.y (mulf d (sin direction))}
 
 -- Compute the expected distance needed to travel until we collide with a wall
 -- or other obstructions in according to the map.
-let expectedDistanceAngle : RoomMap -> Float -> Pos -> Float =
-  lam m. lam angle. lam xy.
+let expectedDistanceState : RoomMap -> State -> Float =
+  lam m. lam state.
   let eps = 0.05 in
-  recursive let work = lam accDist. lam xy.
-    if withinRoomBounds m xy then
-      match xy with (x, y) in
-      let x = addf x (mulf eps (cos angle)) in
-      let y = addf y (mulf eps (sin angle)) in
-      work (addf accDist eps) (x, y)
+  recursive let work = lam accDist. lam state.
+    if withinRoomBounds m (state.x, state.y) then
+      let state = {state with x = addf state.x (mulf eps (cos state.direction)),
+                              y = addf state.y (mulf eps (sin state.direction))} in
+      work (addf accDist eps) state
     else accDist
-  in work 0.0 xy
+  in work 0.0 state
 
 -- Use the function above, but shift the angle according to the direction in
 -- which we should be looking in.
-let expectedDistanceFront = lam m. lam ofs. lam angle. lam xy.
-  let xy = positionPlusOffset xy angle ofs in
-  expectedDistanceAngle m angle xy
+let expectedDistanceFront = lam m. lam ofs. lam state.
+  let state = positionPlusOffset ofs state in
+  expectedDistanceState m state
 
-let expectedDistanceRear = lam m. lam ofs. lam angle. lam xy.
-  let xy = positionPlusOffset xy angle ofs in
-  expectedDistanceAngle m (addf angle pi) xy
+let expectedDistanceRear = lam m. lam ofs. lam state.
+  let state = positionPlusOffset ofs state in
+  expectedDistanceState m {state with direction = addf state.direction pi}
 
-let expectedDistanceLeft = lam m. lam ofs. lam angle. lam xy.
-  let xy = positionPlusOffset xy angle ofs in
-  expectedDistanceAngle m (subf angle (divf pi 2.0)) xy
+let expectedDistanceLeft = lam m. lam ofs. lam state.
+  let state = positionPlusOffset ofs state in
+  expectedDistanceState m {state with direction = subf state.direction (divf pi 2.0)}
 
-let expectedDistanceRight = lam m. lam ofs. lam angle. lam xy.
-  let xy = positionPlusOffset xy angle ofs in
-  expectedDistanceAngle m (addf angle (divf pi 2.0)) xy
+let expectedDistanceRight = lam m. lam ofs. lam state.
+  let state = positionPlusOffset ofs state in
+  expectedDistanceState m {state with direction = addf state.direction (divf pi 2.0)}
