@@ -10,4 +10,5 @@ let steeringAngle = 8
 let startTime = 9
 let trueXCoordinate = 10
 let trueYCoordinate = 11
-let obsPosition = 12
+let trueDirection = 12
+let obsPosition = 13

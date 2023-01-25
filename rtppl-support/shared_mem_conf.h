@@ -44,12 +44,13 @@ extern shared_mem_t sm_regs[];
 #define START_TIME	          (&sm_regs[9])
 #define TRUE_X_COORD          (&sm_regs[10])
 #define TRUE_Y_COORD          (&sm_regs[11])
-#define OBS_POSITION          (&sm_regs[12])
+#define TRUE_DIRECTION        (&sm_regs[12])
+#define OBS_POSITION          (&sm_regs[13])
 
 
 /**
  * Number of shared memory objects configured.
  */
-#define SM_OBJECT_COUNT 13
+#define SM_OBJECT_COUNT 14
 
 #endif //SHARED_MEM_CONF_H_
