@@ -246,7 +246,7 @@ let state = {
   posPriorTsv = (t0, positionPrior),
   buffers = emptyBuffers ()
 } in
-writeData obsPosition state.posPriorTsv;
+writeData obsPosition (unsafeCoerce state.posPriorTsv);
 
 loopFn state (lam i. lam state.
   -- Skip the delay if we are in replay mode
@@ -357,7 +357,7 @@ loopFn state (lam i. lam state.
       (tcurr, posPosterior)
     in
 
-    writeData obsPosition posteriorTsv;
+    writeData obsPosition (unsafeCoerce posteriorTsv);
 
     {state with posPriorTsv = posteriorTsv, buffers = emptyBuffers ()}
 

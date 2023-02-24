@@ -87,17 +87,14 @@ let tsvAvg : FloatTsv -> FloatTsv -> FloatTsv = lam l. lam r.
 -- Finds the median among a given sequence of observations. If there is an even
 -- number of observations, the median is given the minimum timestamp among the
 -- two considered values.
-let median : all a. (a -> a -> Int) -> (a -> a -> a) -> [a] -> a =
-  lam cmp. lam merge. lam obs.
+let medianTsv : [FloatTsv] -> FloatTsv = lam obs.
   let n = length obs in
-  let obs = sort cmp obs in
+  let obs = sort cmpTsv obs in
   if eqi (modi n 2) 0 then
     let mid = divi n 2 in
-    merge (get obs mid) (get obs (addi mid 1))
+    tsvAvg (get obs mid) (get obs (addi mid 1))
   else
     get obs (divi n 2)
-
-let medianTsv : [FloatTsv] -> FloatTsv = median cmpTsv tsvAvg
 
 let expectedValuePosDist : Dist State -> State = lam posPosterior.
   match distEmpiricalSamples posPosterior with (samples, weights) in
