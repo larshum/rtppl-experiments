@@ -1,0 +1,47 @@
+sensor s1 : Float
+sensor s2 : Float
+
+actuator a1 : Float
+
+def d1(period : Float, in1 : Channel(Float), out : Channel(Float)) {
+
+}
+
+def d2(in1 : Channel(Float), in2 : Channel(Float), out : Channel(Float)) {
+
+}
+
+main() {
+  channel c1 : Float
+  channel c2 : Float
+
+  task a = d1(500, s1, c1)
+  task b = d2(c1, s2, c2)
+  task c = d2(c1, c2, a1)
+}
+
+//
+
+def d1(period : Float) {
+  input in1 : Float
+  output out : Float
+}
+
+def d2() {
+  input in1 : Float
+  input in2 : Float
+  output out : Float
+}
+
+main() {
+  task a = d1(500)
+  task b = d2()
+  task c = d2()
+
+  s1 -> a.in1
+  a.out -> b.in1
+  s2 -> b.in2
+  a.out -> c.in1
+  b.out -> c.in2
+  c.out -> a1
+}

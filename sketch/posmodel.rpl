@@ -1,0 +1,372 @@
+// TODO: How/where do we distinguish channels that are only used internally
+// between tasks from those that interact with "external" code? In the below
+// example, the distance and wheel sensors are all reading from the "external"
+// code, the 'positionEstimate' channel is only used internally within RTPPL,
+// while the 'wheelBrake' writes to the "external" code.
+
+// Distance sensors
+channel distanceFrontLeft : Float
+channel distanceFrontRight : Float
+channel distanceRearLeft : Float
+channel distanceRearRight : Float
+channel distanceSideLeft : Float
+channel distanceSideRight : Float
+
+// Wheel sensors
+channel wheelSpeedLeft : Float
+channel wheelSpeedRight : Float
+channel wheelSteeringAngle : Float
+
+// The channel to which we write the estimated position of the car.
+channel positionEstimate : Dist(Float)
+
+// An actuator, which determines whether to brake or not.
+channel wheelBrake : Bool
+
+type RoomMap = {rows : Int, cols : Int, sq : [[Bool]], sqSide : Float}
+type Pos = {x : Float, y : Float, direction : Float}
+type WheelObs = {speed : Float, angle : Float}
+
+// TODO: Which external functions are supported in these files? Can we make
+// use of functions defined in an arbitrary MExpr file?
+let pi = 4.0 * atan(1.0)
+
+// Distance sensor offsets on the car
+let frontLeftOfs = {x = -0.05, y = 0.235, direction = 0.0}
+let frontRightOfs = {x = 0.05, y = 0.235, direction = 0.0}
+let rearLeftOfs = {x = -0.11, y = -0.28, direction = pi}
+let rearRightOfs = {x = 0.11, y = -0.28, direction = pi}
+let sideLeftOfs = {x = -0.105, y = -0.07, direction = -pi / 2.0}
+let sideRightOfs = {x = 0.105, y = -0.07, direction = pi / 2.0}
+
+// Determines whether the given coordinate is within the bounds of the map.
+// NOTE: Current version only considers the center point of the car. We could
+// make it more restrictive by using the sensor offsets to approximate the
+// shape of the car, and thereby find positions where parts of the car end up
+// inside a wall.
+def withinBounds(m : RoomMap, p : Pos) : Bool {
+  let xCoord = p.x / m.sqSide
+  let yCoord = p.y / m.sqSide
+  if xCoord >= 0 && xCoord < m.cols && yCoord >= 0 && yCoord < m.rows {
+    return m.sq[xCoord][yCoord]
+  } else {
+    return false
+  }
+}
+
+// Finds the free squares of the room, i.e., those that are not obstructed by
+// walls.
+def findFreeSquares(m : RoomMap) : [Pos] {
+  let fs = []
+  for i in 0..m.rows {
+    for j in 0..m.cols {
+      if sq[i][j] {
+        fs = push(fs, {x = i * m.sqSide, y = j * m.sqSide, direction = 0})
+      }
+    }
+  }
+  return fs
+}
+
+/////////////////////////////////
+// INITIAL POSITION ESTIMATION //
+/////////////////////////////////
+
+// Choose a random free position on the map, as an initial guess. We defer the
+// choice of direction until the next estimation, when we have distance
+// observations available (in 'estimateDirection'). Otherwise, we risk
+// rejecting good position estimates because we picked a bad initial direction.
+def initialPosition(m : RoomMap) : Pos {
+  let free = findFreeSquares(m)
+  let coord = free[rand() % length(free)]
+  let x = assume(Gaussian(coord.x, coord.x + m.sqSide))
+  let y = assume(Gaussian(coord.y, coord.y + m.sqSide))
+  return {x = x, y = y, direction = 0.0}
+}
+
+// Given the x- and y-coordinates, we choose the most likely direction among a
+// fixed set of angles, for the given observations.
+def estimateDirection(m : RoomMap, distanceSensors : DistanceSensors, d : Dist(Pos)) : Pos {
+  let p0 = assume(d)
+  let angles = [pi / 2.0, pi, 3.0 * pi / 4.0]
+
+  // NOTE: This is a call to a function defined later - we could easily
+  // rearrange them, but I placed them in this way for presentation purposes.
+  // Should it be allowed to refer to later functions?
+  let w = observationModel(m, distanceSensors, p0)
+  for d in angles {
+    let p = {p0 with direction = d}
+    let pw = observationModel(m, distanceSensors, p)
+    if pw > w {
+      p0 = p
+      w = pw
+    }
+  }
+  weight(pw)
+  return p0
+}
+
+//////////////////////
+// TRANSITION MODEL //
+//////////////////////
+
+// Reads the observations we got from the wheel sensors. In this version, we
+// assume all observations are made synchronously, and otherwise we reject
+// them.
+//
+// TODO: This approach should be improved (it's similar to what we use in the
+// actual implementation). Would it make sense to always pick the maximum
+// timestamp out of the three?
+def readWheelObservations() : [TSV(WheelObs)] {
+  // Assume 'readChannel' is a built-in, as described in comment in the
+  // observationModel function.
+  let leftSpeeds : [TSV(Float)] = readChannel(wheelSpeedLeft)
+  let rightSpeeds : [TSV(Float)] = readChannel(wheelSpeedRight)
+  let steeringAngles : [TSV(Float)] = readChannel(wheelSteeringAngle)
+
+  // Mutating the observations array to produce the values... Should we use
+  // some other approach instead?
+  let observations = []
+  // What would happen if the arrays were of different length?
+  for (l, r, sa) in (leftSpeeds, rightSpeeds, steeringAngles) {
+    let ts = tsvTimestamp(l)
+    if ts == tsvTimestamp(r) && ts == tsvTimestamp(sa) {
+      let avgSpeed = l + r / 2.0
+      let obs = tsv({speed = avgSpeed, angle = tsvValue(sa)}, ts)
+      observations = push(observations, obs)
+    }
+  }
+  return observations
+}
+
+// Estimate the next position, assuming the car is driving at constant speed
+// and steering angle from the time of the previous position estimate until the
+// time at which we made the observation of the wheels.
+def estimateNextPosition(obs : TSV(WheelObs), p : TSV(Pos)) : TSV(Pos) {
+  let wo = tsvValue(obs)
+  let pv = tsvValue(p)
+  v = assume(Gaussian(wo.speed, 0.01))
+  a = assume(Gaussian(wo.angle, 0.05))
+  let ot = tsvTimestamp(obs)
+  dist = v * (ot - tsvTimestamp(p))
+  direction = dist * tan(a) / 0.45
+  x = pv.x + dist * cos(direction)
+  y = pv.y + dist * sin(direction)
+  return tsv({x = x, y = y, direction = direction}, tsvTimestamp(ot))
+}
+
+// Compute the "new" position based on the observations provided by the wheel
+// sensors.
+def transitionModel(p0 : Pos, t : Timestamp) : [TSV(Pos)] {
+  let wheelObs = readWheelObservations()
+  let positions = [tsv(p0, t)]
+  for obs in wheelObs {
+    let newPos = estimateNextPosition(obs, positions[-1])
+    positions = push(positions, newPos)
+  }
+  return positions
+}
+
+///////////////////////
+// OBSERVATION MODEL //
+///////////////////////
+
+// Finds the estimated position whose associated timestamp is the closest to
+// the provided timestamp, i.e., the position we expect to most closely match
+// the given timestamp.
+def minTimestampDiff(positions : [TSV(Pos)], ts : Timestamp) : TSV(Pos) {
+  let n = length(positions)
+  if n == 0 {
+    error("Empty array")
+  }
+  let minp = positions[0]
+  let d = abs(tsvTimestamp(minp) - ts)
+  for i in 1..n {
+    let di = abs(tsvTimestamp(positions[i]) - ts)
+    if di < d {
+      minp = positions[i]
+      d = di
+    }
+  }
+  return minp
+}
+
+def positionPlusOffset(p : Pos, ofs : Pos) : Pos {
+  return {
+    x = p.x + ofs.x,
+    y = p.y + ofs.y,
+    direction = p.direction + ofs.direction
+  }
+}
+
+// Estimates the expected distance the a sensor should observe at a given
+// position.
+def estimateDistance(m : RoomMap, p : Pos, ofs : Pos) : Float {
+  let p = positionPlusOffset(p, ofs)
+  let eps = 0.05
+  let distTravelled = 0
+  loop {
+    if withinBounds(m, p) {
+      let x = p.x + eps * cos(p.direction)
+      let y = p.y + eps * sin(p.direction)
+      p = {x = x, y = y, direction = p.direction}
+      distTravelled = distTravelled + eps
+    } else {
+      // TODO: Do we allow breaking/returning from loops? Or should this be
+      // expressed using recursion? Follow-up question: do we allow recursion?
+      break
+    }
+  }
+  return distTravelled
+}
+
+def cmpTs(l : TSV(Pos), r : TSV(Pos)) : Int {
+  let lt = tsvTimestamp(l)
+  let rt = tsvTimestamp(r)
+  if lt > rt {
+    return 1
+  } else if lt < rt {
+    return -1
+  } else {
+    return 0
+  }
+}
+
+// TODO: Should there be a way to define generic functions like sort in the way
+// below? Do we support passing higher-order functions as in the below case?
+def sort<T>(v : [T], cmp : T -> T -> Int) : [T] {
+  // this one should be probably be a built-in regardless
+}
+
+def median(v : [TSV(Pos)]) : TSV(Pos) {
+  let n = length(v)
+  if n % 2 == 0 {
+    error("How do we combine these?")
+  }
+  let vs = sort(v, cmpTs)
+  return vs[n / 2]
+}
+
+def observationModel(m : RoomMap, positions : [TSV(Pos)]) : Float {
+  let w = 1
+  let distanceSensors = [
+    // TODO: Syntax for introducing higher-order functions?
+    (\p -> estimateDistance(m, p, frontLeftOfs), distanceFrontLeft, maxLongRangeSensorDist, 0.1),
+    (\p -> estimateDistance(m, p, frontRightOfs), distanceFrontRight, maxLongRangeSensorDist, 0.1),
+    (\p -> estimateDistance(m, p, rearLeftOfs), distanceRearLeft, maxLongRangeSensorDist, 0.1),
+    (\p -> estimateDistance(m, p, rearRightOfs), distanceRearRight, maxLongRangeSensorDist, 0.1),
+    (\p -> estimateDistance(m, p, sideLeftOfs), distanceSideLeft, maxShortRangeSensorDist, 0.05),
+    (\p -> estimateDistance(m, p, sideRightOfs), distanceSideRight, maxShortRangeSensorDist, 0.05)
+  ]
+  // TODO: Can we do this kind of pattern matching in a for-loop? Should there
+  // be some way to do this?
+  for (estimateDistance, s, maxRange, sigma) in distanceSensors {
+    // We assume 'readChannel' is a built-in generic function which produces a
+    // result of type '[TSV(T)]' from a sensor of type 'Sensor(T)'.
+    let o = median(readChannel(s))
+    let p = tsvValue(minTimestampDiff(positions, tsvTimestamp(o)))
+    let e = estimateDistance(p)
+
+    // TODO: How do we associate values, such as the maximum range, with a
+    // sensor? We probably need to wrap it in a record of some kind.
+    if tsvValue(o) < maxRange {
+      w = w * gaussianLogPdf(e, sigma, tsvValue(o))
+    } else if e < maxRange(s) {
+      w = 0
+      // NOTE: If we support break, it makes sense to stop early, as the
+      // (log)weight is fixed to 0 after this
+      break
+    }
+  }
+  return w
+}
+
+////////////////////////////
+// MAIN POSITIONING MODEL //
+////////////////////////////
+
+// TODO: we should compute the position at the logical time we are
+// estimating, so either the next arrival time or the current one, depending
+// on how we decide to approach it. The current version just takes the
+// position corresponding to the time at which we made the latest wheel
+// observation, which inevitably will introduce some inaccuracy.
+//
+// This problem is also present in the latest version of the model.
+def positionModel(m : RoomMap, d : Dist(Pos)) : Pos {
+  let p0 = assume(d)
+  let t : Timestamp = getTimestamp()
+  let positions : [TSV(Pos)] = transitionModel(p0, t)
+  for tpos in positions {
+    if !withinBounds(m, tpos) {
+      weight(0)
+    }
+  }
+  weight(observationModel(m, positions))
+
+  // NOTE: is it required to use the return keyword? Or could it be implicit
+  // that the final expression is the return value, as in Rust?
+  return positions[-1]
+}
+
+def positioning(m : RoomMap, period : Float) : Unit {
+  // TODO: How do we specify which inference algorithm to use and how it should
+  // be configured?
+  let d : Dist(Pos) = infer(initialPosition(m))
+  let out : TSV(Dist(Pos)) = tsv(d, getLogicalTime())
+  writeChannel(positionEstimate, out)
+  sdelay(period)
+  d = infer(estimateDirection(m, d))
+  out = tsv(d, getLogicalTime())
+  writeChannel(positionEstimate, out)
+  loop {
+    sdelay(period)
+    d = infer(positionModel(m, d))
+    out = tsv(d, getLogicalTime())
+    writeChannel(positionEstimate, out)
+  }
+}
+
+//////////////////
+// BRAKING TASK //
+//////////////////
+
+def brake(period : Float) : Unit {
+  // NOTE: determines at what point in the future we want to brake. We use a
+  // negative value to denote that we do not want to brake.
+  let brakeTime = -1
+  let posDists = readChannel(positionEstimate)
+  loop {
+    // NOTE: If the current logical time has passed the time at which the car
+    // should start braking, we actuate it.
+    if brakeTime < getLogicalTime() {
+      writeChannel(wheelBrake, true)
+    }
+    if length(posDists) > 0 {
+      let d = posDists[-1]
+      // TODO: Starting from our most recent belief of the position, estimate
+      // when the car will collide with a wall if we continue in the current
+      // trajectory. Somehow, we need to make use of the speed here, so we have
+      // to look at the speed observations (as well as the steering angle).
+      // How would we weight particles in this model, though?
+    }
+    sdelay(period)
+    posDists = readChannel(positionEstimate)
+  }
+}
+
+/////////////////////
+// MAIN DEFINITION //
+/////////////////////
+
+main(m : RoomMap) {
+  task p = positioning(m, 500)
+  task b = brake(100)
+
+  // TODO: Do we express relations between the tasks only, or also how they
+  // interact with the external world?
+  network {
+    external -> p
+    p -> b
+    b -> external
+  }
+}
