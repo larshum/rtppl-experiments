@@ -1,0 +1,129 @@
+language Rtppl
+
+include "lexer.mc"
+
+start Program
+
+type Program
+type Top
+type Stmt
+type Expr {grouping = "(" ")", }
+type Type {grouping = "(" ")", }
+type Const
+
+type Channel
+
+type Main
+type Task
+type Connection
+type ChannelSpec
+
+token LIdent {
+  repr = LIdentRepr {},
+  constructor = LIdentTok,
+  fragment = LIdentTokenParser,
+  ty = String,
+}
+token UIdent {
+  repr = UIdentRepr {},
+  constructor = UIdentTok,
+  fragment = UIdentTokenParser,
+  ty = String,
+}
+token Integer {
+  repr = IntRepr {},
+  constructor = IntTok,
+  fragment = UIntTokenParser,
+  ty = Int,
+}
+token Float {
+  repr = FloatRepr {},
+  constructor = FloatTok,
+  fragment = UFloatTokenParser,
+  ty = Float,
+}
+token Boolean {
+  repr = BoolRepr {},
+  constructor = BoolTok,
+  fragment = BooleanTokenParser,
+  ty = Bool,
+}
+
+token LName {
+  base = LIdent,
+  wrap = nameNoSym,
+  ty = Name,
+}
+token UName {
+  base = UIdent,
+  wrap = nameNoSym,
+  ty = Name,
+}
+
+token {fragment = OperatorTokenParser,}
+token {fragment = CommaTokenParser,}
+token {fragment = BracketTokenParser,}
+token {fragment = WhitespaceParser,}
+
+prod Program : Program = tops:Top* main:Main
+
+prod Sensor : Top = "sensor" id:LName ":" ty:Type
+prod Actuator : Top = "actuator" id:LName ":" ty:Type
+prod Constant : Top = "const" id:LName ":" ty:Type "=" e:Expr
+prod TypeAlias : Top = "type" id:UName "=" ty:Type
+prod FunctionDef : Top =
+  "def" id:LName "(" (params:{id:LName ":" ty:Type} ("," params:{id:LName ":" ty:Type})*)? ")"
+  ":" ty:Type "{" body:{chs:Channel* stmts:Stmt*} "}"
+
+prod Input : Channel = "input" id:LName ":" ty:Type
+prod Output : Channel = "output" id:LName ":" ty:Type
+
+prod Binding : Stmt = "let" id:LName ":" ty:Type "=" e:Expr
+prod Reassign : Stmt = id:LName "=" e:Expr
+prod Condition : Stmt =
+  "if" cond:Expr "{" thn:Stmt* "}" ("elif" "{" body:Stmt* "}")* "else" "{" els:Stmt* "}"
+prod ForIn : Stmt = "for" id:LName "in" e:Expr "{" body:Stmt* "}"
+prod Loop : Stmt = "loop" "{" body:Stmt* "}"
+prod Return : Stmt = "return" e:Expr
+prod Break : Stmt = "break"
+
+prod FunctionCall : Expr = id:LName "(" (args:Expr ("," args:Expr)*)? ")"
+prod ArrayAccess : Expr = e:Expr "[" idx:Expr "]"
+prod SeqLit : Expr = "[" (elems:Expr ("," elems:Expr)*)? "]"
+prod Literal : Expr = const:Const
+
+infix Add : Expr = "+"
+infix Sub : Expr = "-"
+infix Mul : Expr = "*"
+infix Div : Expr = "/"
+infix Eq : Expr = "=="
+
+precedence {
+  Mul Div;
+  Add Sub;
+  Eq;
+}
+
+prod Main : Main =
+  "main" "(" (params:{id:LName ":" ty:Type} ("," params:{id:LName ":" ty:Type})*)? ")"
+  "{" tasks:Task* connections:Connection* "}"
+
+-- NOTE(larshum, 2023-02-27): The task expression must be a FunctionCall, but
+-- we can verify this at a later stage in the compiler.
+prod Task : Task = "task" id:LName "=" e:Expr
+prod Connection : Connection = from:ChannelSpec "->" to:ChannelSpec
+prod ChannelSpec : ChannelSpec = task:LName ("." id:LName)?
+
+prod Int : Type = "Int"
+prod Float : Type = "Float"
+prod Bool : Type = "Bool"
+prod Unit : Type = "Unit"
+prod Seq : Type = "[" ty:Type "]"
+prod Record : Type =
+  "{" (fields:{id:LName ":" ty:Type} ("," fields:{id:LName ":" ty:Type})*)? "}"
+prod right Function : Type = from:Type "->" to:Type
+prod Alias : Type = id:UName
+
+prod LitInt : Const = value:Integer
+prod LitFloat : Const = value:Float
+prod LitBool : Const = value:Boolean
