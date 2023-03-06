@@ -9,7 +9,9 @@ type Top
 type Stmt
 type StmtNoIdent
 type Expr {grouping = "(" ")", }
+type ExprNoIdent
 type Type {grouping = "(" ")", }
+type TypeNoIdent
 type Const
 
 type Channel
@@ -49,6 +51,12 @@ token Boolean {
   fragment = BooleanTokenParser,
   ty = Bool,
 }
+token StringLit {
+  repr = StringRepr {},
+  constructor = StringTok,
+  fragment = StringTokenParser,
+  ty = String,
+}
 
 token LName {
   base = LIdent,
@@ -65,6 +73,7 @@ token {fragment = OperatorTokenParser,}
 token {fragment = CommaTokenParser,}
 token {fragment = BracketTokenParser,}
 token {fragment = WhitespaceParser,}
+token {fragment = RTPPLLineCommentParser,}
 
 prod Program : Program = tops:Top* main:Main
 
@@ -79,33 +88,44 @@ prod FunctionDef : Top =
 prod Input : Channel = "input" id:LName ":" ty:Type
 prod Output : Channel = "output" id:LName ":" ty:Type
 
-prod Binding : Stmt = "let" id:LName ":" ty:Type "=" e:Expr
+prod Binding : Stmt = "var" id:LName ":" ty:Type "=" e:Expr
 prod Condition : Stmt =
-  "if" cond:Expr "{" thn:Stmt* "}" ("elif" "{" body:Stmt* "}")* "else" "{" els:Stmt* "}"
+  "if" cond:Expr "{" thn:Stmt* "}" "else" "{" els:Stmt* "}"
 prod ForIn : Stmt = "for" id:LName "in" e:Expr "{" body:Stmt* "}"
 prod Loop : Stmt = "loop" "{" body:Stmt* "}"
 prod Return : Stmt = "return" e:Expr
+prod Break : Stmt = "break"
 
--- NOTE(larshum, 2023-03-06): Grammar workaround to make it LL(1).
-prod IdentFollowsStmt : Stmt = id:LName next:StmtNoIdent
-prod Reassign : StmtNoIdent = "=" e:Expr
+-- NOTE(larshum, 2023-03-06): Grammar workarounds to make it LL(1).
+prod IdentPlusStmt : Stmt = id:LName next:StmtNoIdent
+prod Reassign : StmtNoIdent = ("." proj:LIdent)? "=" e:Expr
 prod FunctionCallS : StmtNoIdent = "(" (args:Expr ("," args:Expr)*)? ")"
+prod IdentPlusExpr : Expr = id:LName next:ExprNoIdent
+prod Variable : ExprNoIdent = empty
+prod FunctionCallE : ExprNoIdent = "(" (args:Expr ("," args:Expr)*)? ")"
+prod Projection : ExprNoIdent = "." id:LIdent
 
-prod FunctionCall : Expr = id:LName "(" (args:Expr ("," args:Expr)*)? ")"
 prod ArrayAccess : Expr = e:Expr "[" idx:Expr "]"
-prod SeqLit : Expr = "[" (elems:Expr ("," elems:Expr)*)? "]"
+prod ArrayLit : Expr = "[" (elems:Expr ("," elems:Expr)*)? "]"
+prod RecordLit : Expr = "{" (fields:{id:LIdent "=" e:Expr} ("," fields:{id:LIdent "=" e:Expr})*)? "}"
 prod Literal : Expr = const:Const
 
 infix Add : Expr = "+"
 infix Sub : Expr = "-"
 infix Mul : Expr = "*"
 infix Div : Expr = "/"
+infix Rem : Expr = "%"
 infix Eq : Expr = "=="
+infix Geq : Expr = ">="
+infix Lt : Expr = "<"
+infix Gt : Expr = ">"
+infix And : Expr = "&&"
 
 precedence {
-  Mul Div;
+  Mul Div Rem;
   Add Sub;
-  Eq;
+  Eq Geq Lt Gt;
+  And;
 }
 
 prod Main : Main =
@@ -124,10 +144,15 @@ prod Bool : Type = "Bool"
 prod Unit : Type = "Unit"
 prod Seq : Type = "[" ty:Type "]"
 prod Record : Type =
-  "{" (fields:{id:LName ":" ty:Type} ("," fields:{id:LName ":" ty:Type})*)? "}"
+  "{" (fields:{id:LIdent ":" ty:Type} ("," fields:{id:LIdent ":" ty:Type})*)? "}"
 prod right Function : Type = from:Type "->" to:Type
-prod Alias : Type = id:UName
+
+-- NOTE(larshum, 2023-03-06): Yet another workaround to make grammar LL(1).
+prod Alias : Type = id:UName next:TypeNoIdent
+prod Direct : TypeNoIdent = empty
+prod Application : TypeNoIdent = "(" args:Type ("," args:Type)* ")"
 
 prod LitInt : Const = value:Integer
 prod LitFloat : Const = value:Float
 prod LitBool : Const = value:Boolean
+prod LitString : Const = value:StringLit
