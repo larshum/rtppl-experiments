@@ -7,6 +7,7 @@ start Program
 type Program
 type Top
 type Stmt
+type StmtNoIdent
 type Expr {grouping = "(" ")", }
 type Type {grouping = "(" ")", }
 type Const
@@ -79,13 +80,16 @@ prod Input : Channel = "input" id:LName ":" ty:Type
 prod Output : Channel = "output" id:LName ":" ty:Type
 
 prod Binding : Stmt = "let" id:LName ":" ty:Type "=" e:Expr
-prod Reassign : Stmt = id:LName "=" e:Expr
 prod Condition : Stmt =
   "if" cond:Expr "{" thn:Stmt* "}" ("elif" "{" body:Stmt* "}")* "else" "{" els:Stmt* "}"
 prod ForIn : Stmt = "for" id:LName "in" e:Expr "{" body:Stmt* "}"
 prod Loop : Stmt = "loop" "{" body:Stmt* "}"
 prod Return : Stmt = "return" e:Expr
-prod Break : Stmt = "break"
+
+-- NOTE(larshum, 2023-03-06): Grammar workaround to make it LL(1).
+prod IdentFollowsStmt : Stmt = id:LName next:StmtNoIdent
+prod Reassign : StmtNoIdent = "=" e:Expr
+prod FunctionCallS : StmtNoIdent = "(" (args:Expr ("," args:Expr)*)? ")"
 
 prod FunctionCall : Expr = id:LName "(" (args:Expr ("," args:Expr)*)? ")"
 prod ArrayAccess : Expr = e:Expr "[" idx:Expr "]"
