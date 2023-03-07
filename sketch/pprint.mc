@@ -18,19 +18,19 @@ lang RtpplPrettyPrint = RtpplAst
     join ["const ", nameGetStr id, " : ", pprintRtpplType ty, " = ", pprintRtpplExpr 2 e]
   | TypeAliasTop {id = {v = id}, ty = ty} ->
     join ["type ", nameGetStr id, " = ", pprintRtpplType ty]
-  | FunctionDefTop {id = {v = id}, params = params, ty = ty, body = {chs = channels, stmts = stmts}} ->
+  | FunctionDefTop {id = {v = id}, params = params, ty = ty, body = {ports = ports, stmts = stmts}} ->
     let paramsStr = pprintRtpplParams params in
-    let chs = strJoin "" (map (lam ch. concat (pprintRtpplChannel ch) "\n") channels) in
+    let ports = strJoin "\n" (map pprintRtpplPort ports) in
     let stmtStrs = strJoin "\n" (map (pprintRtpplStmt 2) stmts) in
     join ["def ", nameGetStr id, "(", paramsStr, ") : ", pprintRtpplType ty,
-          " {\n", chs, stmtStrs, "\n}"]
+          " {\n", ports, stmtStrs, "\n}"]
 
-  sem pprintRtpplChannel : Channel -> String
-  sem pprintRtpplChannel =
-  | InputChannel {id = {v = id}, ty = ty} ->
-    join ["  input ", nameGetStr id, " : ", pprintRtpplType ty]
-  | OutputChannel {id = {v = id}, ty = ty} ->
-    join ["  output ", nameGetStr id, " : ", pprintRtpplType ty]
+  sem pprintRtpplPort : Port -> String
+  sem pprintRtpplPort =
+  | InputPort {id = {v = id}, ty = ty} ->
+    join ["  input ", id, " : ", pprintRtpplType ty]
+  | OutputPort {id = {v = id}, ty = ty} ->
+    join ["  output ", id, " : ", pprintRtpplType ty]
 
   sem pprintRtpplParams : [{id : {i : Info, v : Name}, ty : Type}] -> String
   sem pprintRtpplParams =
@@ -52,17 +52,18 @@ lang RtpplPrettyPrint = RtpplAst
 
   sem pprintRtpplTask : Task -> String
   sem pprintRtpplTask =
-  | Task {id = {v = id}, e = e} ->
-    join ["  task ", nameGetStr id, " = ", pprintRtpplExpr 2 e]
+  | Task {id = {v = id}, templateId = {v = tid}, args = args} ->
+    join ["  task ", nameGetStr id, " = ", nameGetStr tid, "(",
+          strJoin ", " (map(pprintRtpplExpr 2) args), ")"]
 
   sem pprintRtpplConnection : Connection -> String
   sem pprintRtpplConnection =
   | Connection {from = from, to = to} ->
     let pprintSpec = lam spec.
-      match spec with ChannelSpec {task = {v = tid}, id = id} in
+      match spec with ChannelSpec {port = {v = pid}, id = id} in
       match id with Some {v = chid} then
-        join [nameGetStr tid, ".", nameGetStr chid]
-      else nameGetStr tid
+        join [nameGetStr pid, ".", chid]
+      else nameGetStr pid
     in
     join ["  ", pprintSpec from, " -> ", pprintSpec to]
 

@@ -14,7 +14,7 @@ type Type {grouping = "(" ")", }
 type TypeNoIdent
 type Const
 
-type Channel
+type Port
 
 type Main
 type Task
@@ -83,10 +83,10 @@ prod Constant : Top = "const" id:LName ":" ty:Type "=" e:Expr
 prod TypeAlias : Top = "type" id:UName "=" ty:Type
 prod FunctionDef : Top =
   "def" id:LName "(" (params:{id:LName ":" ty:Type} ("," params:{id:LName ":" ty:Type})*)? ")"
-  ":" ty:Type "{" body:{chs:Channel* stmts:Stmt*} "}"
+  ":" ty:Type "{" body:{ports:Port* stmts:Stmt*} "}"
 
-prod Input : Channel = "input" id:LName ":" ty:Type
-prod Output : Channel = "output" id:LName ":" ty:Type
+prod Input : Port = "input" id:LIdent ":" ty:Type
+prod Output : Port = "output" id:LIdent ":" ty:Type
 
 prod Binding : Stmt = "var" id:LName ":" ty:Type "=" e:Expr
 prod Condition : Stmt =
@@ -134,9 +134,9 @@ prod Main : Main =
 
 -- NOTE(larshum, 2023-02-27): The task expression must be a FunctionCall, but
 -- we can verify this at a later stage in the compiler.
-prod Task : Task = "task" id:LName "=" e:Expr
+prod Task : Task = "task" id:LName "=" templateId:LName "(" (args:Expr ("," args:Expr)*)? ")"
 prod Connection : Connection = from:ChannelSpec "->" to:ChannelSpec
-prod ChannelSpec : ChannelSpec = task:LName ("." id:LName)?
+prod ChannelSpec : ChannelSpec = port:LName ("." id:LIdent)?
 
 prod Int : Type = "Int"
 prod Float : Type = "Float"
