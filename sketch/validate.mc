@@ -154,37 +154,36 @@ lang RtpplValidate = RtpplAst
   sem addConnection : Network -> Connection -> Network
   sem addConnection network =
   | Connection {from = fromSpec, to = toSpec, info = info} ->
-    let from = channelSpecToPortId fromSpec in
+    let from = portSpecToPortId fromSpec in
     let network =
       match mapLookup from network with Some portState then
         mapInsert from (updateOutputPortState info portState) network
       else
-        errorSingle [get_ChannelSpec_info fromSpec]
+        errorSingle [get_PortSpec_info fromSpec]
           "Reference to undefined output port"
     in
-    let to = channelSpecToPortId toSpec in
+    let to = portSpecToPortId toSpec in
     match mapLookup to network with Some portState then
       mapInsert to (updateInputPortState info portState) network
     else
-      errorSingle [get_ChannelSpec_info toSpec]
+      errorSingle [get_PortSpec_info toSpec]
         "Reference to undefined input port"
 
-  sem channelSpecToPortId : ChannelSpec -> PortId
-  sem channelSpecToPortId =
-  | ChannelSpec {port = {v = extId}, id = None ()} ->
+  sem portSpecToPortId : PortSpec -> PortId
+  sem portSpecToPortId =
+  | PortSpec {port = {v = extId}, id = None ()} ->
     External extId
-  | ChannelSpec {port = {v = taskId}, id = Some {v = portId}} ->
+  | PortSpec {port = {v = taskId}, id = Some {v = portId}} ->
     Internal (taskId, portId)
 
   sem updateOutputPortState : Info -> PortState -> PortState
   sem updateOutputPortState info =
-  | UnusedSensorOutput _ ->
+  | UnusedSensorOutput _
+  | UsedSensorOutput _ ->
     UsedSensorOutput info
   | UnusedTaskOutput _
   | UsedTaskOutput _ ->
     UsedTaskOutput info
-  | UsedSensorOutput i ->
-    errorSingle [i, info] "Sensor outputs cannot be mapped to multiple input ports"
   | UnusedActuatorInput i
   | UnusedTaskInput i
   | UsedActuatorInput i

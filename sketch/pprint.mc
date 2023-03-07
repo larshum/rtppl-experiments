@@ -60,7 +60,7 @@ lang RtpplPrettyPrint = RtpplAst
   sem pprintRtpplConnection =
   | Connection {from = from, to = to} ->
     let pprintSpec = lam spec.
-      match spec with ChannelSpec {port = {v = pid}, id = id} in
+      match spec with PortSpec {port = {v = pid}, id = id} in
       match id with Some {v = chid} then
         join [nameGetStr pid, ".", chid]
       else nameGetStr pid

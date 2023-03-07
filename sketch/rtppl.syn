@@ -19,7 +19,7 @@ type Port
 type Main
 type Task
 type Connection
-type ChannelSpec
+type PortSpec
 
 token LIdent {
   repr = LIdentRepr {},
@@ -135,8 +135,8 @@ prod Main : Main =
 -- NOTE(larshum, 2023-02-27): The task expression must be a FunctionCall, but
 -- we can verify this at a later stage in the compiler.
 prod Task : Task = "task" id:LName "=" templateId:LName "(" (args:Expr ("," args:Expr)*)? ")"
-prod Connection : Connection = from:ChannelSpec "->" to:ChannelSpec
-prod ChannelSpec : ChannelSpec = port:LName ("." id:LIdent)?
+prod Connection : Connection = from:PortSpec "->" to:PortSpec
+prod PortSpec : PortSpec = port:LName ("." id:LIdent)?
 
 prod Int : Type = "Int"
 prod Float : Type = "Float"
