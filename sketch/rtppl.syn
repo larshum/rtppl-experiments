@@ -132,8 +132,6 @@ prod Main : Main =
   "main" "(" (params:{id:LName ":" ty:Type} ("," params:{id:LName ":" ty:Type})*)? ")"
   "{" tasks:Task* connections:Connection* "}"
 
--- NOTE(larshum, 2023-02-27): The task expression must be a FunctionCall, but
--- we can verify this at a later stage in the compiler.
 prod Task : Task = "task" id:LName "=" templateId:LName "(" (args:Expr ("," args:Expr)*)? ")"
 prod Connection : Connection = from:PortSpec "->" to:PortSpec
 prod PortSpec : PortSpec = port:LName ("." id:LIdent)?

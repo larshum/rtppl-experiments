@@ -226,8 +226,8 @@ def estimateSensorDistance(m : RoomMap, positions : [TSV(Pos)],
 }
 
 def cmpTs(l : TSV(Pos), r : TSV(Pos)) : Int {
-  var lt : Float = tsvTimestamp(l)
-  var rt : Float = tsvTimestamp(r)
+  var lt : Timestamp = tsvTimestamp(l)
+  var rt : Timestamp = tsvTimestamp(r)
   if lt > rt {
     return 1
   } else {
