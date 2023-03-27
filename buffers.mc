@@ -181,7 +181,7 @@ let writeData : all a. Int -> (Int, a) -> () = lam id. lam outputData.
 let saveBuffersAndExit : Signal -> () = lam.
   use RTPPLBuffers in
   match deref _bufferState with Some state then
-    saveBuffersAndExit state
+    saveBuffersAndExit state; ()
   else exit 0
 
 -- Sets the above function to be called on the SIGINT signal.
