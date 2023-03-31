@@ -88,6 +88,9 @@ let positionPlusOffset : SensorOffset -> State -> State =
 -- or other obstructions in according to the map.
 let expectedDistanceState : RoomMap -> State -> Float =
   lam m. lam state.
+  -- NOTE(larshum, 2023-03-31): Lowering this value results in a more accurate
+  -- estimation of the expected distance, but is more computationally
+  -- intensive.
   let eps = 0.05 in
   recursive let work = lam accDist. lam state.
     if withinRoomBounds m (state.x, state.y) then
