@@ -15,7 +15,8 @@ type BufferState = {
   buffers : Map Int Buffer,
   inputs : [Int],
   outputs : [Int],
-  bufferOnlyOutputs : Set Int
+  bufferOnlyOutputs : Set Int,
+  t0 : Int
 }
 
 let _bufferFile = lam id. join ["trace-", int2string id]
@@ -59,8 +60,8 @@ lang RTPPLBuffers
   | Record _ | Replay _ ->
     mapInsert id (_initBuffer ()) buffers
 
-  sem init : Options -> [Int] -> [Int] -> BufferState
-  sem init options inputs =
+  sem init : Options -> Int -> [Int] -> [Int] -> BufferState
+  sem init options t0 inputs =
   | outputs ->
     let mode = selectMode options in
     let buffers =
@@ -72,12 +73,14 @@ lang RTPPLBuffers
         (lam buffers. lam outputId. loadOutputBuffer buffers outputId mode)
         buffers outputs in
     { mode = mode, inputs = inputs, outputs = outputs, buffers = buffers
-    , bufferOnlyOutputs = options.bufferOnlyOutputs }
+    , bufferOnlyOutputs = options.bufferOnlyOutputs, t0 = t0 }
 
   sem pushBuffer : Int -> BufferState -> TimeStampedValue -> BufferState
   sem pushBuffer id state =
   | tsv ->
     match mapLookup id state.buffers with Some buf then
+      match tsv with (ts, value) in
+      let tsv = (subi ts state.t0, value) in
       let buf = cons tsv buf in
       {state with buffers = mapInsert id buf state.buffers}
     else error "Buffer with provided ID not found in buffer state"
@@ -86,7 +89,8 @@ lang RTPPLBuffers
   sem popBuffer id =
   | state ->
     match mapLookup id state.buffers with Some buf then
-      match buf with [tsv] ++ buf then
+      match buf with [(ts, value)] ++ buf then
+        let tsv = (subi ts state.t0, value) in
         ( {state with buffers = mapInsert id buf state.buffers}, tsv )
       else saveBuffersAndExit state
     else error "Buffer with provided ID not found in buffer state"
@@ -148,9 +152,9 @@ let _getState : () -> BufferState = lam.
     state
   else error "Buffer state error"
 
-let initBuffers = lam options. lam inputs. lam outputs.
+let initBuffers = lam options. lam t0. lam inputs. lam outputs.
   use RTPPLBuffers in
-  let state = init options inputs outputs in
+  let state = init options t0 inputs outputs in
   modref _bufferState (Some state);
   state
 

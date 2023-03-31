@@ -2,71 +2,22 @@ include "buffers.mc"
 
 type FloatTsv = (Int, Float)
 
-type State = {x : Float, y : Float, direction : Float}
+type State = {
+  x : Float,
+  y : Float,
+  speed : Float,
+  direction : Float,
+  steeringAngle : Float,
+  ts : Int
+}
+
+let tan = lam rad. divf (sin rad) (cos rad)
 
 let loopFn : all a. a -> (Int -> a -> a) -> a = lam v. lam f.
   recursive let work = lam i. lam v.
     let vnext = f i v in
     work (addi i 1) vnext
   in work 1 v
-
-let printFloatBuffer : String -> () = lam id.
-  let buf = _loadBuffer id in
-  let printTsv = lam tsv.
-    match tsv with (ts, value) in
-    join [int2string ts, " ", float2string (unsafeCoerce value)]
-  in
-  printLn (strJoin "\n" (map printTsv buf))
-
-let printDist : all a. (a -> String) -> Dist a -> () =
-  lam printSample. lam dist.
-  recursive let work = lam samples. lam weights.
-    match (samples, weights) with ([s] ++ samples, [w] ++ weights) then
-      printLn (join [printSample s, " ", float2string w]);
-      work samples weights
-    else ()
-  in
-  match distEmpiricalSamples dist with (samples, weights) in
-  work samples weights
-
-let printFloatDistributionBuffer : String -> () = lam id.
-  let buf = _loadBuffer id in
-  let printTsv = lam tsv.
-    match tsv with (_, dist) in
-    printDist float2string (unsafeCoerce dist)
-  in
-  iter printTsv buf
-
-let printPositionDistributionBuffer : String -> () = lam id.
-  let printPosSample : (Float, Float, Float) -> String = lam sample.
-    match sample with (x, y, angle) in
-    join [float2string x, " ", float2string y, " ", float2string angle]
-  in
-  let buf = _loadBuffer id in
-  let printTsv = lam tsv.
-    match tsv with (ts, dist) in
-    printLn (int2string ts);
-    printDist printPosSample (unsafeCoerce dist)
-  in
-  iter printTsv buf
-
-let handleOptions : Options -> () = lam options.
-  if null options.printBufferFiles then ()
-  else (
-    iter
-      (lam entry.
-        match entry with (id, bufType) in
-        printError (join ["Printing contents of buffer file ", id, ":\n"]); flushStderr ();
-        match bufType with FloatBuffer _ then
-          printFloatBuffer id
-        else match bufType with DistFloatBuffer _ then
-          printFloatDistributionBuffer id
-        else match bufType with DistPosBuffer _ then
-          printPositionDistributionBuffer id
-        else never)
-      options.printBufferFiles;
-    exit 0
-  )
 
 let cmpFloat : Float -> Float -> Int = lam l. lam r.
   if gtf l r then 1
@@ -75,6 +26,11 @@ let cmpFloat : Float -> Float -> Int = lam l. lam r.
 
 let floatAvg : Float -> Float -> Float = lam l. lam r.
   divf (addf l r) 2.0
+
+let cmpTsvTime : all a. (Int, a) -> (Int, a) -> Int = lam l. lam r.
+  if gti l.0 r.0 then 1
+  else if lti l.0 r.0 then negi 1
+  else 0
 
 let cmpTsv : FloatTsv -> FloatTsv -> Int = lam l. lam r.
   if gtf l.1 r.1 then 1
@@ -95,17 +51,6 @@ let medianTsv : [FloatTsv] -> FloatTsv = lam obs.
     tsvAvg (get obs mid) (get obs (addi mid 1))
   else
     get obs (divi n 2)
-
-let expectedValuePosDist : Dist State -> State = lam posPosterior.
-  match distEmpiricalSamples posPosterior with (samples, weights) in
-  foldl
-    (lam acc. lam t.
-      match t with (state, w) in
-      let nw = exp w in
-      {acc with x = addf acc.x (mulf nw state.x),
-                y = addf acc.y (mulf nw state.y),
-                direction = addf acc.direction (mulf nw state.direction)})
-    {x = 0.0, y = 0.0, direction = 0.0} (zip samples weights)
 
 let degToRad = lam angle.
   divf (mulf angle pi) 180.0

@@ -27,7 +27,7 @@ def read_pos_dist(f):
     r = subprocess.run(["./out", "--print-pos-dist", f], capture_output=True, text=True)
     return r.stdout.splitlines()
 
-batchsz = 10000
+batchsz = 1000
 
 if not os.path.exists("plots/"):
     os.mkdir("plots")

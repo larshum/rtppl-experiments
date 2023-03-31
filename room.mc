@@ -1,6 +1,7 @@
 include "math.mc"
 include "string.mc"
 
+include "constants.mc"
 include "shared.mc"
 
 type Pos = (Float, Float)
@@ -40,7 +41,7 @@ let printMap : RoomMap -> String = lam m.
 
 -- Sanity check: reading and printing a test map should yield exactly the same
 -- string as stored in the original file.
-utest printMap (readMap "maps/map-with-wall.txt") with readFile "maps/map-with-wall.txt" using eqString
+utest printMap (readMap "maps/track.txt") with readFile "maps/track.txt" using eqString
 
 let roomDims : RoomMap -> (Int, Int) = lam m.
   let nrows = length m in
@@ -75,21 +76,13 @@ let withinRoomBounds : RoomMap -> Pos -> Bool = lam m. lam xy.
     false
   else not (get (get m row) col)
 
-let positionPlusOffset : (Float, Float) -> State -> State =
+let positionPlusOffset : SensorOffset -> State -> State =
   lam offset. lam state.
 
-  -- Compute the offset angle beta from the provided angle, due to the offsets
-  -- of the sensor.
-  let quot = divf offset.0 offset.1 in
-  let beta = divf (sin quot) (cos quot) in
-
-  -- Compute the distance to travel in the direction of 'angle + beta'.
-  let d = divf offset.0 (sin beta) in
-
-  -- Compute the updated position
-  let direction = addf state.direction beta in
-  {state with x = addf state.x (mulf d (cos direction)),
-              y = addf state.y (mulf d (sin direction))}
+  -- Compute the position at the provided offset.
+  let direction = addf state.direction offset.angle in
+  {state with x = addf state.x (mulf offset.dist (cos direction)),
+              y = addf state.y (mulf offset.dist (sin direction))}
 
 -- Compute the expected distance needed to travel until we collide with a wall
 -- or other obstructions in according to the map.
@@ -121,3 +114,35 @@ let expectedDistanceLeft = lam m. lam ofs. lam state.
 let expectedDistanceRight = lam m. lam ofs. lam state.
   let state = positionPlusOffset ofs state in
   expectedDistanceState m {state with direction = addf state.direction (divf pi 2.0)}
+
+mexpr
+
+let statePos = lam s.
+  (s.x, s.y)
+in
+let testPos = lam ofs. lam s.
+  statePos (positionPlusOffset ofs s)
+in
+let eqTupleApprox = lam l. lam r.
+  if eqfApprox 1e-10 l.0 r.0 then
+    eqfApprox 1e-10 l.1 r.1
+  else false
+in
+
+let s = {x = 0.0, y = 0.0, direction = 0.0, speed = 0.0, steeringAngle = 0.0, ts = 0} in
+utest testPos frontLeftOfs s with (0.235, 0.05) using eqTupleApprox in
+utest testPos frontRightOfs s with (0.235, negf 0.05) using eqTupleApprox in
+utest testPos rearLeftOfs s with (negf 0.28, 0.11) using eqTupleApprox in
+utest testPos rearRightOfs s with (negf 0.28, negf 0.11) using eqTupleApprox in
+utest testPos leftOfs s with (negf 0.07, 0.105) using eqTupleApprox in
+utest testPos rightOfs s with (negf 0.07, negf 0.105) using eqTupleApprox in
+
+let s2 = {s with direction = divf pi 2.0} in
+utest testPos frontLeftOfs s2 with (negf 0.05, 0.235) using eqTupleApprox in
+utest testPos frontRightOfs s2 with (0.05, 0.235) using eqTupleApprox in
+utest testPos rearLeftOfs s2 with (negf 0.11, negf 0.28) using eqTupleApprox in
+utest testPos rearRightOfs s2 with (0.11, negf 0.28) using eqTupleApprox in
+utest testPos leftOfs s2 with (negf 0.105, negf 0.07) using eqTupleApprox in
+utest testPos rightOfs s2 with (0.105, negf 0.07) using eqTupleApprox in
+
+()
