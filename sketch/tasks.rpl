@@ -1,24 +1,27 @@
 sensor s1 : Float
 sensor s2 : Float
-
 actuator a1 : Float
-
 def d1(period : Float) : Unit {
   input in1 : Float
   output out : Float
+  // ...
 }
-
 def d2() : Unit {
   input in1 : Float
   input in2 : Float
   output out : Float
+  // ...
 }
-
+def d3() : Unit {
+  input in1 : Float
+  input in2 : Float
+  actuator output out : Float
+  // ...
+}
 main() {
   task a = d1(500)
   task b = d2()
-  task c = d2()
-
+  task c = d3()
   s1 -> a.in1
   a.out -> b.in1
   s2 -> b.in2

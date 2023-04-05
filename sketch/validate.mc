@@ -26,27 +26,31 @@ lang RtpplValidate = RtpplAst
   syn PortState =
   | UnusedSensorOutput Info
   | UnusedActuatorInput Info
-  | UnusedTaskOutput Info
   | UnusedTaskInput Info
+  | UnusedTaskOutput Info
+  | UnusedTaskActuatorOutput Info
   | UsedSensorOutput Info
   | UsedActuatorInput Info
-  | UsedTaskOutput Info
   | UsedTaskInput Info
+  | UsedTaskOutput Info
+  | UsedTaskActuatorOutput Info
 
   sem portStateInfo : PortState -> Info
   sem portStateInfo =
   | UnusedSensorOutput i -> i
   | UnusedActuatorInput i -> i
-  | UnusedTaskOutput i -> i
   | UnusedTaskInput i -> i
+  | UnusedTaskOutput i -> i
+  | UnusedTaskActuatorOutput i -> i
   | UsedSensorOutput i -> i
   | UsedActuatorInput i -> i
-  | UsedTaskOutput i -> i
   | UsedTaskInput i -> i
+  | UsedTaskOutput i -> i
+  | UsedTaskActuatorOutput i -> i
 
   -- OPT(larshum, 2023-03-06): Use a more efficient data structure for storing
   -- strings, such as a trie.
-  type PortConfig = {inputs : Map String Info, outputs : Map String Info}
+  type PortConfig = Map String PortState
 
   type PortDecls = {
     sensors : Map Name Info,
@@ -74,24 +78,27 @@ lang RtpplValidate = RtpplAst
   | ActuatorTop {id = {v = id}, info = info} ->
     {acc with actuators = mapInsert id info acc.actuators}
   | FunctionDefTop {id = {v = id}, body = {ports = declaredPorts}} ->
-    let emptyPortConfig = {
-      inputs = mapEmpty cmpString,
-      outputs = mapEmpty cmpString
-    } in
+    let emptyPortConfig = mapEmpty cmpString in
     let functionDecls = foldl addPortToConfig emptyPortConfig declaredPorts in
     {acc with decls = mapInsert id functionDecls acc.decls}
   | _ -> acc
 
+  sem insertPortErr : String -> PortState -> PortConfig -> PortConfig
+  sem insertPortErr id s1 =
+  | config ->
+    match mapLookup id config with Some s2 then
+      let psi = portStateInfo in
+      errorSingle [psi s1, psi s2] "Port name already in use"
+    else mapInsert id s1 config
+
   sem addPortToConfig : PortConfig -> Port -> PortConfig
   sem addPortToConfig config =
   | InputPort {id = {v = id}, info = i1} ->
-    match mapLookup id config.inputs with Some i2 then
-      errorSingle [i1, i2] "Duplicate definition of input port"
-    else {config with inputs = mapInsert id i1 config.inputs}
+    insertPortErr id (UnusedTaskInput i1) config
   | OutputPort {id = {v = id}, info = i1} ->
-    match mapLookup id config.outputs with Some i2 then
-      errorSingle [i1, i2] "Duplicate definition of output port"
-    else {config with outputs = mapInsert id i1 config.outputs}
+    insertPortErr id (UnusedTaskOutput i1) config
+  | ActuatorOutputPort {id = {v = id}, info = i1} ->
+    insertPortErr id (UnusedTaskActuatorOutput i1) config
 
   sem validateNetwork : PortDecls -> Main -> ()
   sem validateNetwork declPorts =
@@ -134,27 +141,20 @@ lang RtpplValidate = RtpplAst
       else
         errorSingle [info] "Task is defined in terms of undefined function"
     in
-    let network = mapFoldWithKey (insertTaskInputPort id) network config.inputs in
-    mapFoldWithKey (insertTaskOutputPort id) network config.outputs
+    mapFoldWithKey (insertTaskPort id) network config
 
-  sem insertTaskInputPort : Name -> Network -> String -> Info -> Network
-  sem insertTaskInputPort taskId network portId =
-  | info ->
+  sem insertTaskPort : Name -> Network -> String -> PortState -> Network
+  sem insertTaskPort taskId network portId =
+  | state ->
     let portId = Internal (taskId, portId) in
-    let state = UnusedTaskInput info in
-    mapInsert portId state network
-
-  sem insertTaskOutputPort : Name -> Network -> String -> Info -> Network
-  sem insertTaskOutputPort taskId network portId =
-  | info ->
-    let portId = Internal (taskId, portId) in
-    let state = UnusedTaskOutput info in
     mapInsert portId state network
 
   sem addConnection : Network -> Connection -> Network
   sem addConnection network =
   | Connection {from = fromSpec, to = toSpec, info = info} ->
     let from = portSpecToPortId fromSpec in
+    let to = portSpecToPortId toSpec in
+    validateActuatorConnection network info from to;
     let network =
       match mapLookup from network with Some portState then
         mapInsert from (updateOutputPortState info portState) network
@@ -162,12 +162,28 @@ lang RtpplValidate = RtpplAst
         errorSingle [get_PortSpec_info fromSpec]
           "Reference to undefined output port"
     in
-    let to = portSpecToPortId toSpec in
     match mapLookup to network with Some portState then
       mapInsert to (updateInputPortState info portState) network
     else
       errorSingle [get_PortSpec_info toSpec]
         "Reference to undefined input port"
+
+  -- NOTE(larshum, 2023-04-05): This function validates that, when the to-port
+  -- of a connection is the input port of an actuator, the output port must
+  -- have been declared as an actuator output port. This is important as these
+  -- have different semantics from the standard output ports.
+  sem validateAcutatorConnection : Network -> Info -> PortId -> PortId -> ()
+  sem validateActuatorConnection network info from =
+  | to ->
+    match mapLookup to network
+    with Some (UnusedActuatorInput _ | UsedActuatorInput _) then
+      match mapLookup from network
+      with Some (UnusedTaskActuatorOutput _ | UsedTaskActuatorOutput _) then
+        ()
+      else
+        errorSingle [info]
+          "Actuator must be connected to task actuator output ports"
+    else ()
 
   sem portSpecToPortId : PortSpec -> PortId
   sem portSpecToPortId =
@@ -178,41 +194,48 @@ lang RtpplValidate = RtpplAst
 
   sem updateOutputPortState : Info -> PortState -> PortState
   sem updateOutputPortState info =
-  | UnusedSensorOutput _
-  | UsedSensorOutput _ ->
-    UsedSensorOutput info
-  | UnusedTaskOutput _
-  | UsedTaskOutput _ ->
-    UsedTaskOutput info
+  | UnusedSensorOutput i
+  | UsedSensorOutput i ->
+    UsedSensorOutput i
+  | UnusedTaskOutput i
+  | UsedTaskOutput i ->
+    UsedTaskOutput i
+  | UnusedTaskActuatorOutput i ->
+    UsedTaskActuatorOutput i
+  | UsedTaskActuatorOutput i ->
+    errorSingle [i, info] "Actuator outputs cannot be mapped to multiple input ports"
   | UnusedActuatorInput i
   | UnusedTaskInput i
   | UsedActuatorInput i
   | UsedTaskInput i ->
-    errorSingle [i] "Input ports cannot be used as output"
+    errorSingle [i, info] "Input ports cannot be used as output"
 
   sem updateInputPortState : Info -> PortState -> PortState
   sem updateInputPortState info =
-  | UnusedActuatorInput _ ->
-    UsedActuatorInput info
-  | UnusedTaskInput _ ->
-    UsedTaskInput info
+  | UnusedActuatorInput i ->
+    UsedActuatorInput i
+  | UnusedTaskInput i ->
+    UsedTaskInput i
   | UsedActuatorInput i ->
     errorSingle [i, info] "Multiple outputs cannot be mapped to one actuator input"
   | UsedTaskInput i ->
     errorSingle [i, info] "Multiple outputs cannot be mapped to one task input port"
   | UnusedSensorOutput i
   | UnusedTaskOutput i
+  | UnusedTaskActuatorOutput i
   | UsedSensorOutput i
-  | UsedTaskOutput i ->
-    errorSingle [i] "Output ports cannot be used as input"
+  | UsedTaskOutput i
+  | UsedTaskActuatorOutput i ->
+    errorSingle [i, info] "Output ports cannot be used as input"
 
   sem validatePortState : () -> PortId -> PortState -> ()
   sem validatePortState acc portId =
-  | UnusedSensorOutput i ->
-    errorSingle [i] "The output from this sensor is not connected to any task"
   | UnusedActuatorInput i ->
     errorSingle [i] "No task output is connected to this actuator."
-  | UnusedTaskOutput i ->
+  | UnusedSensorOutput i ->
+    errorSingle [i] "The output from this sensor is not connected to any task"
+  | UnusedTaskOutput i
+  | UnusedTaskActuatorOutput i ->
     let msg = join ["The output port ", portIdToString portId, " is unused."] in
     errorSingle [i] msg
   | UnusedTaskInput i ->
@@ -220,8 +243,10 @@ lang RtpplValidate = RtpplAst
     errorSingle [i] msg
   | UsedSensorOutput _
   | UsedActuatorInput _
+  | UsedTaskInput _
   | UsedTaskOutput _
-  | UsedTaskInput _ -> ()
+  | UsedTaskActuatorOutput _ ->
+    ()
 end
 
 mexpr

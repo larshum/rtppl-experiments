@@ -87,6 +87,7 @@ prod FunctionDef : Top =
 
 prod Input : Port = "input" id:LIdent ":" ty:Type
 prod Output : Port = "output" id:LIdent ":" ty:Type
+prod ActuatorOutput : Port = "actuator" "output" id:LIdent ":" ty:Type
 
 prod Binding : Stmt = "var" id:LName ":" ty:Type "=" e:Expr
 prod Condition : Stmt =
