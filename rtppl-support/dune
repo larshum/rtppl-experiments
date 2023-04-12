@@ -1,9 +1,0 @@
-(library
- (name rtppl)
- (public_name rtppl-support)
- (foreign_stubs
-  (language c)
-  (names shared_mem shared_mem_conf smemio-stubs rt-stubs))
- (foreign_stubs
-  (language cxx)
-  (names fifo-stubs)))
