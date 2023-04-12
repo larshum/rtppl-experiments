@@ -35,3 +35,6 @@ external clock_nanosleep : int * int -> unit = "clock_nanosleep_stub"
 external set_priority : int -> int = "set_priority_stub"
 
 let set_max_priority (_ : unit) : int = set_priority 255
+
+external read_float_named_pipe : string -> (int * float) array = "read_float_named_pipe_stub"
+external write_float_named_pipe : string -> float -> int * int -> unit = "write_float_named_pipe_stub"
