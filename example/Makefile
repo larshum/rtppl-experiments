@@ -20,4 +20,4 @@ $(RTPPL_PATH)/ast.mc: $(RTPPL_PATH)/ast.syn
 	mi syn $< $@
 
 clean:
-	rm -f r1 r2 r1-in1 r1-out1 r2-in1 r2-out1 reader writer relay rtppl
+	rm -f r1 r2 r1-inp r1-outp r2-inp r2-outp reader writer relay rtppl network.json

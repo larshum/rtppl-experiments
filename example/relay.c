@@ -10,14 +10,14 @@
 #include "common.h"
 
 int main() {
-  const char *src = "r1-out1";
-  const char *dst = "r2-in1";
-  int in = open(src, O_RDWR | O_NONBLOCK);
+  const char *src = "r1-outp";
+  const char *dst = "r2-inp";
+  int in = open(src, O_RDWR);
   if (in == -1) {
     fprintf(stderr, "Could not open %s for reading\n", src);
     exit(1);
   }
-  int out = open(dst, O_RDWR | O_NONBLOCK);
+  int out = open(dst, O_RDWR);
   if (out == -1) {
     fprintf(stderr, "Could not open %s for writing\n", dst);
     exit(1);
@@ -31,7 +31,6 @@ int main() {
         fflush(stdout);
       }
     }
-    usleep((int)1e4);
   }
   close(in);
   close(out);

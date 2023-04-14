@@ -10,7 +10,7 @@
 #include "common.h"
 
 int main() {
-  const char *destination = "r1-in1";
+  const char *destination = "r1-inp";
   int out = open(destination, O_RDWR | O_NONBLOCK);
   if (out == -1) {
     fprintf(stderr, "Could not open %s for writing\n", destination);

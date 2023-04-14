@@ -10,8 +10,8 @@
 #include "common.h"
 
 int main() {
-  const char *source = "r2-out1";
-  int in = open(source, O_RDWR | O_NONBLOCK);
+  const char *source = "r2-outp";
+  int in = open(source, O_RDWR);
   if (in == -1) {
     fprintf(stderr, "Could not open %s for reading\n", source);
     exit(1);
@@ -19,16 +19,13 @@ int main() {
   struct payload buffer;
   while (1) {
     int count;
-    do {
-      count = read(in, (void*)&buffer, sizeof(struct payload));
-      if (count > 0) {
-        printf("read value %lf at timestamp %lld\n", buffer.val, buffer.ts);
-        fflush(stdout);
-      }
-    } while (count > 0);
-    printf("=====\n");
-    fflush(stdout);
-    usleep((int)1e6);
+    count = read(in, (void*)&buffer, sizeof(struct payload));
+    if (count > 0) {
+      printf("read value %lf at timestamp %lld\n", buffer.val, buffer.ts);
+      fflush(stdout);
+    } else {
+      break;
+    }
   }
   close(in);
   return 0;

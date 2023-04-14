@@ -1,36 +1,35 @@
 sensor s : Float
 actuator a : Float
-def addFloat(a : Float, b : Float) : Float {
-  return a +. b
-}
-def addX(x : Float) : Unit {
-  input in1 : Float
-  actuator output out1 : Float
+def mulX(period : Int, x : Float) : Unit {
+  input inp : Float
+  output outp : Float
   loop {
-    var y : [TSV(Float)] = readPort(in1)
+    var y : [TSV(Float)] = readPort(inp)
     loop for z in y {
       var value : Float = tsvValue(z)
-      writePort(out1, value +. x, 0)
+      writePort(outp, value *. x, 0)
     }
-    sdelay(100)
+    sdelay(period)
   }
 }
-def mulXIntermediate(x : Float) : Unit {
-  input in1 : Float
-  output out1 : Float
+def addX(period : Int, x : Float) : Unit {
+  input inp : Float
+  actuator output outp : Float
   loop {
-    var y : [TSV(Float)] = readPort(in1)
+    var y : [TSV(Float)] = readPort(inp)
     loop for z in y {
       var value : Float = tsvValue(z)
-      writePort(out1, value *. x, 0)
+      // Alternative syntax?
+      // write value +. x to outp delay 0
+      writePort(outp, value +. x, 0)
     }
-    sdelay(200)
+    sdelay(period)
   }
 }
 main() {
-  task r1 = mulXIntermediate(2.0)
-  task r2 = addX(1.0)
-  s -> r1.in1
-  r1.out1 -> r2.in1
-  r2.out1 -> a
+  task r1 = mulX(200, 2.0)
+  task r2 = addX(100, 1.0)
+  s -> r1.inp
+  r1.outp -> r2.inp
+  r2.outp -> a
 }
