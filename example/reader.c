@@ -18,8 +18,7 @@ int main() {
   }
   struct payload buffer;
   while (1) {
-    int count;
-    count = read(in, (void*)&buffer, sizeof(struct payload));
+    int count = read_payload(in, &buffer);
     if (count > 0) {
       printf("read value %lf at timestamp %lld\n", buffer.val, buffer.ts);
       fflush(stdout);

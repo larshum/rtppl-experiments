@@ -24,9 +24,9 @@ int main() {
   }
   struct payload buffer;
   while (1) {
-    int count = read(in, (void*)&buffer, sizeof(buffer));
+    int count = read_payload(in, &buffer);
     if (count > 0) {
-      count = write(out, (void*)&buffer, sizeof(buffer));
+      count = write_payload(out, &buffer);
       if (count > 0) {
         fflush(stdout);
       }

@@ -20,7 +20,7 @@ int main() {
   buffer.ts = get_time();
   buffer.val = 0.0;
   while (1) {
-    int count = write(out, (void*)&buffer, sizeof(struct payload));
+    int count = write_payload(out, &buffer);
     if (count > 0) {
       printf("wrote value: %lf with timestamp %lld\n", buffer.val, buffer.ts);
       fflush(stdout);

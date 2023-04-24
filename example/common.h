@@ -7,6 +7,24 @@ struct payload {
   double val;
 };
 
+int read_payload(int fd, struct payload *p) {
+  int64_t n;
+  int c = read(fd, (void*)&n, sizeof(int64_t));
+  if (c <= 0) {
+    return c;
+  }
+  return read(fd, (void*)p, sizeof(struct payload));
+}
+
+int write_payload(int fd, struct payload *p) {
+  int64_t n = sizeof(struct payload);
+  int c = write(fd, (void*)&n, sizeof(int64_t));
+  if (c <= 0) {
+    return c;
+  }
+  return write(fd, (void*)p, sizeof(struct payload));
+}
+
 int get_timespec(struct timespec *ts) {
   clock_serv_t cclock;
   mach_timespec_t mts;
