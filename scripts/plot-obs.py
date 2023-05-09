@@ -7,6 +7,7 @@ import numpy as np
 import os
 import struct
 import sys
+import time
 
 def read_obs(f):
     with open(f, "rb") as f:
@@ -20,12 +21,15 @@ def read_obs(f):
         ofs += 24
     return obs
 
-obs = read_obs(sys.argv[1])
 now = datetime.now()
 target = f'plots/{now.strftime("%Y%m%d-%H%M%S")}'
 os.mkdir(target)
-fig, axs0 = plt.subplots(1)
-axs0.hist(obs, bins=np.arange(0.0, 2.0, 0.01))
-axs0.set_xlabel("x")
-axs0.set_ylabel("frequency")
-fig.savefig(f"{target}/0.png")
+for idx, arg in enumerate(sys.argv[1:]):
+    obs = read_obs(arg)
+    fig, axs0 = plt.subplots(1)
+    axs0.hist(obs, bins=np.arange(0.0, 4.0, 0.05))
+    axs0.set_xlabel("x")
+    axs0.set_ylabel("frequency")
+    axs0.set_title(f"#samples={len(obs)}")
+    name, _ = os.path.splitext(os.path.basename(arg))
+    fig.savefig(f"{target}/{name}.png")
