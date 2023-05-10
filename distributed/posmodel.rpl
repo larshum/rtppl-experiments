@@ -144,7 +144,6 @@ model speedModel(prior : Dist(Float), observations : [TSV(Float)]) : Float {
     }
   }
 
-  resample
   return v
 }
 

@@ -321,7 +321,6 @@ model positionModel(m : RoomMap, d : Dist(State), distObs : DistanceObs,
   } else {
     degenerate
   }
-  resample
   return nextState
 }
 
