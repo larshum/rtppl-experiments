@@ -125,7 +125,7 @@ def timeRelativeSigma(ts : Int) : Float {
 // estimations, as the current speed of the car does not depend much on the
 // speed during our previous estimation. (it might be a good idea to include
 // that as well)
-def speedModel(prior : Dist(Float), observations : [TSV(Float)]) : Float {
+model speedModel(prior : Dist(Float), observations : [TSV(Float)]) : Float {
   // Start from our earlier estimation of the speed (in meters per second).
   assume vprev ~ prior
 
@@ -148,7 +148,7 @@ def speedModel(prior : Dist(Float), observations : [TSV(Float)]) : Float {
   return v
 }
 
-def speedEst(period : Int) : Unit {
+template speedEst(period : Int) {
   input lspeed : Float
   input rspeed : Float
   output speed : Dist(Float)
@@ -165,7 +165,7 @@ def speedEst(period : Int) : Unit {
 
 // Estimates the "true" distance between the car and an obstacle given
 // observations from one or multiple sensors placed at a certain direction.
-def distanceModel(period : Int, prior : Dist(Float), obs : [TSV(Float)],
+model distanceModel(period : Int, prior : Dist(Float), obs : [TSV(Float)],
                   maxSensorRange : Float) : Float {
   assume d ~ Uniform(0.0, 10.0)
 
@@ -199,7 +199,7 @@ def distanceModel(period : Int, prior : Dist(Float), obs : [TSV(Float)],
 // Estimates the distance observed by a particular sensor. This sensor is
 // assumed to be installed at the provided offset relative to the center of the
 // car.
-def ultrasonicDistance(period : Int) : Unit {
+template ultrasonicDistance(period : Int) {
   input distObs : Float
   output dist : Dist(Float)
   var d : Dist(Float) = Uniform(0.0, 10.0)
@@ -211,7 +211,7 @@ def ultrasonicDistance(period : Int) : Unit {
   }
 }
 
-def tofDistance(period : Int) : Unit {
+template tofDistance(period : Int) {
   input distObs : Float
   output dist : Dist(Float)
   var d : Dist(Float) = Uniform(0.0, 10.0)
@@ -227,7 +227,7 @@ def tofDistance(period : Int) : Unit {
 // and then sampling coordinates within the block. We assume that the initial
 // direction of the car relative to the map is known, and that the car is
 // stationary when the model starts running.
-def initialPositionModel(blocks : [Coordinate]) : Pos {
+model initialPositionModel(blocks : [Coordinate]) : Pos {
   var c : Coordinate = randElemExn(blocks)
   var x : Float = intToFloat(c.col) * roomBlockWidth
   var y : Float = intToFloat(c.row) * roomBlockWidth
@@ -252,7 +252,7 @@ def estimateDistance(m : RoomMap, ofs : Offset, p : Pos) : Float {
   return acc.d
 }
 
-def observeSensor(m : RoomMap, pos : Pos, s : SensorData) : Unit {
+model observeSensor(m : RoomMap, pos : Pos, s : SensorData) : Unit {
   var estDist : Float = estimateDistance(m, s.ofs, pos)
   loop for tsv in s.obs {
     var sigma : Float = timeRelativeSigma(timestamp(tsv)) / 10.0
@@ -263,7 +263,7 @@ def observeSensor(m : RoomMap, pos : Pos, s : SensorData) : Unit {
   }
 }
 
-def positionModel(m : RoomMap, prior : Dist(Pos), flObs : [TSV(Dist(Float))],
+model positionModel(m : RoomMap, prior : Dist(Pos), flObs : [TSV(Dist(Float))],
                   frObs : [TSV(Dist(Float))], rlObs : [TSV(Dist(Float))],
                   rrObs : [TSV(Dist(Float))], lObs : [TSV(Dist(Float))],
                   rObs : [TSV(Dist(Float))]) : Pos {
@@ -294,7 +294,7 @@ def positionModel(m : RoomMap, prior : Dist(Pos), flObs : [TSV(Dist(Float))],
   return pos
 }
 
-def positionEstimate(period : Int) : Unit {
+template positionEstimate(period : Int) {
   input frontLeft : Dist(Float)
   input frontRight : Dist(Float)
   input rearLeft : Dist(Float)
@@ -328,7 +328,7 @@ def positionEstimate(period : Int) : Unit {
 // logical time of the braking task. If the estimated position at this
 // lookahead is outside of the bounds of the map, we say that the car should
 // brake.
-def brakeModel(m : RoomMap, posEst : TSV(Dist(Pos)), lookahead : Int) : Bool {
+model brakeModel(m : RoomMap, posEst : TSV(Dist(Pos)), lookahead : Int) : Bool {
   assume posPrev ~ value(posEst)
 
   // Estimate the new position of the car at the given lookahead into the
@@ -356,7 +356,7 @@ def countTrue(bools : [Bool]) : Int {
   return acc
 }
 
-def brakeEstimate(period : Int) : Unit {
+template brakeEstimate(period : Int) {
   input pos : Dist(Pos)
   output brake : Float
   var m : RoomMap = readRoomMap ()

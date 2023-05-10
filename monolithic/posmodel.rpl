@@ -170,7 +170,7 @@ def timeDeltaSec(t0 : Int, t1 : Int) : Float {
 
 // Models the transition from a state at a previous estimation to the state at
 // the current logical time, based on observations made from the wheels.
-def transitionModel(wheelObs : WheelObs, s0 : State, period : Int) : State {
+model transitionModel(wheelObs : WheelObs, s0 : State, period : Int) : State {
   var accState : TSV(State) = tsv(negInt(period), s0)
   var events : [TSV(Event)] = collectWheelObsEvents(wheelObs)
   events = push(events, tsv(0, {id = 3, value = 0.0}))
@@ -247,7 +247,7 @@ def interpolateState(s0 : State, s1 : State, rate : Float) : State {
   return s1
 }
 
-def observeSensor(s : SensorData, s0 : State, s1 : State, period : Int) : Unit {
+model observeSensor(s : SensorData, s0 : State, s1 : State, period : Int) : Unit {
   var timeOffset : Float = intToFloat(addInt(period, timestamp(s.obs))) / intToFloat(period)
   var interpState : State = interpolateState(s0, s1, timeOffset)
   var f : State -> Float = s.expectedDistance
@@ -258,7 +258,7 @@ def observeSensor(s : SensorData, s0 : State, s1 : State, period : Int) : Unit {
   } else {}
 }
 
-def observationModel(m : RoomMap, distObs : DistanceObs,
+model observationModel(m : RoomMap, distObs : DistanceObs,
                      prevState : State, currState : State,
                      period : Int) : Unit {
   var sensors : [SensorData] = [
@@ -274,7 +274,7 @@ def observationModel(m : RoomMap, distObs : DistanceObs,
   }
 }
 
-def initialPositionModel(blocks : [Coordinate]) : State {
+model initialPositionModel(blocks : [Coordinate]) : State {
   // NOTE: The commented-out parts assume we have no knowledge of the initial
   // position of the car. As this does not seem to perform very well, we use a
   // more significantly more specific initial position.
@@ -312,7 +312,7 @@ def initialPosition(m : RoomMap) : Dist(State) {
 // Assume we want to estimate the state at t = 0, i.e. at the current logical
 // time. Then the distribution of 'd' encodes our belief during the previous
 // estimation.
-def positionModel(m : RoomMap, d : Dist(State), distObs : DistanceObs,
+model positionModel(m : RoomMap, d : Dist(State), distObs : DistanceObs,
                   wheelObs : WheelObs, period : Int) : State {
   assume state ~ d
   var nextState : State = transitionModel(wheelObs, state, period)
@@ -340,7 +340,7 @@ def medianTsv(tsvs : [TSV(Float)]) : TSV(Float) {
   return res
 }
 
-def positioning(period : Int) : Unit {
+template positioning(period : Int) {
   input frontLeft : Float
   input frontRight : Float
   input rearLeft : Float
@@ -394,7 +394,7 @@ def countTrue(bools : [Bool]) : Int {
   return acc
 }
 
-def brakingModel(m : RoomMap, statesTsv : TSV(Dist(State)), lookahead : Int) : Bool {
+model brakingModel(m : RoomMap, statesTsv : TSV(Dist(State)), lookahead : Int) : Bool {
   assume sprev ~ value(statesTsv)
 
   var ts : Int = timestamp(statesTsv)
@@ -409,7 +409,7 @@ def brakingModel(m : RoomMap, statesTsv : TSV(Dist(State)), lookahead : Int) : B
   return not(withinRoomBounds(m, s))
 }
 
-def braking(period : Int) : Unit {
+template braking(period : Int) {
   input pos : Dist(State)
   output brake : Float
   var m : RoomMap = readRoomMap()
