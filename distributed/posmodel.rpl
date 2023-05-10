@@ -377,7 +377,7 @@ template brakeEstimate(period : Int) {
   }
 }
 
-main {
+network {
   // Distance sensors
   sensor frontLeft : Float
   sensor frontRight : Float
