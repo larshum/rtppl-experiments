@@ -16,6 +16,7 @@ const wheelCircumference : Float = 0.35
 const ultrasonicMaxRange : Float = 4.0
 const tofMaxRange : Float = 2.0
 
+const zeroOffset : Offset = { angle = 0.0, distance = 0.0, direction = 0.0 }
 const frontLeftOffset : Offset = {
   angle = 0.0-0.209639845874, distance = 0.240260275535, direction = 0.0
 }
@@ -125,25 +126,23 @@ def timeRelativeSigma(ts : Int) : Float {
 // estimations, as the current speed of the car does not depend much on the
 // speed during our previous estimation. (it might be a good idea to include
 // that as well)
-model speedModel(prior : Dist(Float), observations : [TSV(Float)]) : Float {
+model speedModel(prior : Dist(Float), obs : [TSV(Float)]) : Float {
   // Start from our earlier estimation of the speed (in meters per second).
   assume vprev ~ prior
 
   // Our new belief of the speed is normally distributed around our old belief.
-  // TODO: choose sigma based on the max acceleration of the car.
   assume v ~ Gaussian(vprev, 0.1)
   cond if v < 0.0 || v > maxSpeed {
     degenerate
   } else {
-    loop for tsv in observations {
-      var ts : Int = timestamp(tsv)
-      var sigma : Float = timeRelativeSigma(timestamp(tsv)) / 5.0
+    loop for tsv in obs {
+      var sigma : Float = timeRelativeSigma(timestamp(tsv)) / 10.0
       var rpm : Float = value(tsv)
       var mps : Float = rpm * wheelCircumference / 60.0
       observe mps ~ Gaussian(v, sigma)
     }
   }
-
+  resample
   return v
 }
 
@@ -167,7 +166,6 @@ template speedEst(period : Int) {
 model distanceModel(period : Int, prior : Dist(Float), obs : [TSV(Float)],
                   maxSensorRange : Float) : Float {
   assume d ~ Uniform(0.0, 10.0)
-
   cond if eqInt(|obs|, 0) {
     // If we have no new observations, we sample from the distribution of
     // distances from our previous estimation and treat that as an observation.
@@ -191,7 +189,6 @@ model distanceModel(period : Int, prior : Dist(Float), obs : [TSV(Float)],
       } else {}
     }
   }
-
   return d
 }
 
@@ -237,9 +234,8 @@ model initialPositionModel(blocks : [Coordinate]) : Pos {
 }
 
 // The position denotes our belief of the center of the car.
-def estimateDistance(m : RoomMap, ofs : Offset, p : Pos) : Float {
+def estimateDistance(m : RoomMap, ofs : Offset, p : Pos, eps : Float) : Float {
   p = positionAtOffset(p, ofs)
-  var eps : Float = 0.05
   var acc : {d : Float, p : Pos} = {d = 0.0, p = p}
   loop acc while withinRoomBounds(m, acc.p) {
     var p : Pos = acc.p
@@ -252,7 +248,7 @@ def estimateDistance(m : RoomMap, ofs : Offset, p : Pos) : Float {
 }
 
 model observeSensor(m : RoomMap, pos : Pos, s : SensorData) : Unit {
-  var estDist : Float = estimateDistance(m, s.ofs, pos)
+  var estDist : Float = estimateDistance(m, s.ofs, pos, 0.05)
   loop for tsv in s.obs {
     var sigma : Float = timeRelativeSigma(timestamp(tsv)) / 10.0
     assume obsDist ~ value(tsv)
@@ -322,57 +318,77 @@ template positionEstimate(period : Int) {
   }
 }
 
-// Defines the braking model, which makes use of the latest available position
-// estimation to estimate the position at a given lookahead, relative to the
-// logical time of the braking task. If the estimated position at this
-// lookahead is outside of the bounds of the map, we say that the car should
-// brake.
-model brakeModel(m : RoomMap, posEst : TSV(Dist(Pos)), lookahead : Int) : Bool {
-  assume posPrev ~ value(posEst)
-
-  // Estimate the new position of the car at the given lookahead into the
-  // future, assuming the car drives in a certain direction at a random
-  // (average) speed.
-  var ts : Int = timestamp(posEst)
-  assume v ~ Uniform(0.0, maxSpeed)
-  var dist : Float = v * intToFloat(subInt(lookahead, ts)) / intToFloat(1s)
-  assume dir ~ Gaussian(posPrev.direction, pi / 2.0)
-  var x : Float = posPrev.x + dist * cos(dir)
-  var y : Float = posPrev.y + dist * sin(dir)
-  var p : Pos = {x = x, y = y, direction = dir}
-
-  // If the estimated position of the car a second in the future is not
-  // within the bounds of the map, it means the car has crashed at some point
-  // in between. This means that the car needs to brake.
-  return not(carWithinRoomBounds(m, p))
-}
-
-def countTrue(bools : [Bool]) : Int {
-  var acc : Int = 0
-  loop acc for b in bools {
-    cond acc if b { acc = addInt(acc, 1) } else {}
+def maxDistFloatTsv(tsvs : [TSV(Dist(Float))]) : TSV(Dist(Float)) {
+  var acc : TSV(Dist(Float)) = tsvs[0]
+  loop acc for i in range(1, |tsvs|) {
+    cond acc if gtInt(timestamp(tsvs[i]), timestamp(acc)) {
+      acc = tsvs[i]
+    } else {}
   }
   return acc
 }
 
-template brakeEstimate(period : Int) {
+// Estimate for how long the car can keep driving until it crashes into a wall.
+model crashModel(m : RoomMap, posEst : TSV(Dist(Pos)),
+                 speedEst : [TSV(Dist(Float))]) : Float {
+  assume posPrev ~ value(posEst)
+
+  // Estimate the current speed of the car. If we have any speed estimations,
+  // we use the most recent one as our basis, and otherwise we choose a random
+  // speed.
+  cond v if gtInt(|speedEst|, 0) {
+    var speed : TSV(Dist(Float)) = maxDistFloatTsv(speedEst)
+    assume vEst ~ value(speed)
+    var ts : Int = subInt(timestamp(speed), timestamp(posEst))
+    assume v ~ Gaussian(vEst, timeRelativeSigma(ts) / 5.0)
+  } else {
+    assume v ~ Uniform(0.0, maxSpeed)
+  }
+  cond if v < 0.0 || v > maxSpeed {
+    degenerate
+  } else {}
+  assume d ~ Gaussian(posPrev.direction, pi / 8.0)
+  posPrev.direction = d
+
+  // Assuming v is the average speed of the car, estimate for how long the car
+  // can drive until it crashes into a wall (in nanoseconds).
+  var d : Float = estimateDistance(m, zeroOffset, posPrev, 0.01)
+  return (d / v) * intToFloat(1s)
+}
+
+def expectedValue(x : {s : [Float], w : [Float]}) : Float {
+  var acc : Float = 0.0
+  loop acc for i in range(0, |x.s|) {
+    acc = acc + (x.s[i]) * exp(x.w[i])
+  }
+  return acc
+}
+
+def maxDistPosTsv(tsvs : [TSV(Dist(Pos))]) : TSV(Dist(Pos)) {
+  var acc : TSV(Dist(Pos)) = tsvs[0]
+  loop acc for i in range(1, |tsvs|) {
+    cond acc if gtInt(timestamp(tsvs[i]), timestamp(acc)) {
+      acc = tsvs[i]
+    } else {}
+  }
+  return acc
+}
+
+template brakeEstimate(period : Int, safetyMargin : Int) {
   input pos : Dist(Pos)
+  input speed : Dist(Float)
   output brake : Float
   var m : RoomMap = readRoomMap ()
   loop {
     sdelay period
-    read pos to posIn
-    cond if gtInt(|posIn|, 0) {
-      var posDist : TSV(Dist(Pos)) = posIn[subInt(|posIn|, 1)]
-      infer d <- brakeModel(m, posDist, 1s) particles 1000
-      // We use a built-in function for extracting the values of an
-      // empirical distribution.
-      var res : [Bool] = samples d
-
-      // Determine the constant via a parameter?
-      cond if gtInt(countTrue(res), 700) {
-        write 1.0 to brake
-      } else {}
+    read pos to posEst
+    read speed to speedEst
+    cond if gtInt(|posEst|, 0) {
+      var posDist : TSV(Dist(Pos)) = maxDistPosTsv(posEst)
+      infer d <- crashModel(m, posDist, speedEst) particles 1000
+      var nanosUntilCrash : Int = floorToInt(expectedValue(samples d))
+      var nanosUntilBrake : Int = subInt(nanosUntilCrash, safetyMargin)
+      write 0.0 to brake delay nanosUntilBrake
     } else {}
   }
 }
@@ -403,13 +419,13 @@ network {
   task leftDist = tofDistance(500ms)
   task rightDist = tofDistance(500ms)
   task pos = positionEstimate(1s)
-  task brake = brakeEstimate(1s)
+  task brake = brakeEstimate(1s, 200ms)
 
   // Network specification
   speedLeft -> speedEst.lspeed
   speedRight -> speedEst.rspeed
   speedEst.speed -> pos.speed
-
+  speedEst.speed -> brake.speed
   frontLeft -> frontLeftDist.distObs
   frontRight -> frontRightDist.distObs
   rearLeft -> rearLeftDist.distObs

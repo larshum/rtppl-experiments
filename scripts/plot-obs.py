@@ -27,7 +27,7 @@ os.mkdir(target)
 for idx, arg in enumerate(sys.argv[1:]):
     obs = read_obs(arg)
     fig, axs0 = plt.subplots(1)
-    axs0.hist(obs, bins=np.arange(0.0, 4.0, 0.05))
+    axs0.hist(obs, bins=np.arange(0.0, max(obs) + 0.05, 0.05))
     axs0.set_xlabel("x")
     axs0.set_ylabel("frequency")
     axs0.set_title(f"#samples={len(obs)}")

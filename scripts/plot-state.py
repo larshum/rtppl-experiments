@@ -63,7 +63,6 @@ if len(sys.argv) == 3:
 
     dists = read_state_dists(sys.argv[2])
     for i, (_ts, dist) in enumerate(dists):
-        print(_ts)
         fig, axs = plt.subplots(1)
         data = np.zeros([rows, cols])
         for (w, s) in dist:

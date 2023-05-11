@@ -84,16 +84,15 @@ def choose_closest_after_timestamp(s, ts):
         return s[-1]
     return s[p]
 
-def plot_dist(axs, dists, ts, true_val):
+def plot_dist(axs, dists, ts, max_val, true_val):
     ts, samples = choose_closest_after_timestamp(dists, ts)
     weights, values = [], []
     for w, v in samples:
         weights.append(w)
         values.append(v[0])
     weights = np.array(weights)
-    w = 0.01
     axs.clear()
-    axs.hist(values, bins=np.arange(0.0, 10.0, 0.05), rwidth=0.9, weights=weights)
+    axs.hist(values, bins=np.arange(0.0, max_val + 0.05, 0.05), rwidth=0.9, weights=weights)
     if true_val is not None:
         axs.axvline(x=true_val, ymin=0.99, ymax=1.0, color="green")
     axs.set_title(f"{(ts-fst_ts)/1e9}:\n#particles={len(samples)}")
@@ -148,12 +147,14 @@ def update(ts, label):
         idx = 9
     else:
         print(f"Unknown label: {label}")
+    maxvs = [0, 0, 0, 8.0, 8.0, 8.0, 8.0, 4.0, 4.0, 0.5]
+    max_val = maxvs[idx]
     laxs.set_ylabel("probability")
     if tv is not None:
         true_val = tv[idx]
     else:
         true_val = None
-    plot_dist(laxs, inputs[label], ts, true_val)
+    plot_dist(laxs, inputs[label], ts, max_val, true_val)
 
     # Update position image
     plot_pos_dist(raxs, inputs["pos"], ts, tv)
