@@ -388,7 +388,7 @@ template brakeEstimate(period : Int, safetyMargin : Int) {
       infer d <- crashModel(m, posDist, speedEst) particles 1000
       var nanosUntilCrash : Int = floorToInt(expectedValue(samples d))
       var nanosUntilBrake : Int = subInt(nanosUntilCrash, safetyMargin)
-      write 0.0 to brake delay nanosUntilBrake
+      write 0.0 to brake offset nanosUntilBrake
     } else {}
   }
 }
