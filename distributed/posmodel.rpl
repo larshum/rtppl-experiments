@@ -338,6 +338,17 @@ template positionEstimate(period : Int) {
   }
 }
 
+def clamp(v : Float, lo : Float, hi : Float) : Float {
+  cond v if v < lo {
+    v = lo
+  } else {
+    cond v if v > hi {
+      v = hi
+    } else {}
+  }
+  return v
+}
+
 // Estimate the time at which the car needs to start braking in order to
 // prevent a crash.
 model brakeModel(m : RoomMap, posEst : TSV(Dist(Pos)),
@@ -351,17 +362,16 @@ model brakeModel(m : RoomMap, posEst : TSV(Dist(Pos)),
     var speed : TSV(Dist(Float)) = maxDistFloatTsv(speedEst)
     assume vEst ~ value(speed)
     var ts : Int = subInt(timestamp(speed), timestamp(posEst))
-    assume v ~ Gaussian(vEst, timeRelativeSigma(ts))
+    assume v ~ Gaussian(vEst, timeRelativeSigma(ts) / 10.0)
   } else {
     assume v ~ Uniform(0.0, maxSpeed)
   }
-  cond if v < 0.0 {
-    degenerate
-  } else {}
+  // NOTE(larshum, 2023-05-14): We clamp the speed to ensure we get a
+  // value in the valid range. Further, we use a value slightly larger than
+  // zero to avoid an infinite time until the crash.
+  v = clamp(v, 0.01, maxSpeed)
 
-  // Remove for easier debugging
-  //assume d ~ Gaussian(posPrev.direction, pi / 16.0)
-  posPrev.direction = pi
+  assume d ~ Gaussian(posPrev.direction, pi / 16.0)
 
   // TODO(larshum, 2023-05-12): This is an estimate based on how the car
   // behaves in the simulator. This should be tuned based on the behavior on
@@ -373,38 +383,29 @@ model brakeModel(m : RoomMap, posEst : TSV(Dist(Pos)),
   // position. We use this to estimate the time at which we need to start
   // braking.
   var crashDist : Float = estimateDistance(m, zeroOffset, posPrev, 0.01)
-  var brakeDist : Float = crashDist - brakeDistance
-  return (brakeDist / v) * intToFloat(1s)
+  return (crashDist - brakeDistance) / v * intToFloat(1s)
 }
 
-def cmpSample(l : {s:Float,w:Float}, r : {s:Float,w:Float}) : Int {
-  cond res if l.s > r.s {
+def cmpFloat(l : Float, r : Float) : Int {
+  var res : Int = 0
+  cond res if l > r {
     res = 1
   } else {
-    cond res if l.s < r.s {
+    cond res if l < r {
       res = negInt(1)
-    } else {
-      res = 0
-    }
+    } else {}
   }
   return res
 }
 
-def expectedValue(x : {s : [Float], w : [Float]}) : Float {
-  var s : [{s:Float,w:Float}] = []
-  loop s for i in range(0, |x.s|) {
-    cond s if exp(x.w[i]) > 0.0 {
-      s = push(s, {s=x.s[i],w=x.w[i]})
-    } else {}
+def medianValue(x : {s : [Float], w : [Float]}) : Float {
+  var s : [Float] = []
+  var xs : [Float] = x.s
+  loop s for i in range(0, |xs|) {
+    s = push(s, xs[i])
   }
-  var s : [{s:Float,w:Float}] = sort(cmpSample, s)
-  var x : {s:Float,w:Float} = s[divInt(mulInt(|s|,10),100)]
-  return x.s
-  // var acc : Float = 0.0
-  // loop acc for i in range(0, |x.s|) {
-  //   acc = acc + (x.s[i]) * exp(x.w[i])
-  // }
-  // return acc
+  s = sort(cmpFloat, s)
+  return s[divInt(|s|, 2)]
 }
 
 def maxDistPosTsv(tsvs : [TSV(Dist(Pos))]) : TSV(Dist(Pos)) {
@@ -423,20 +424,21 @@ template brakeEstimate(period : Int, safetyMargin : Int) {
   output brake : Float
   var m : RoomMap = readRoomMap ()
   loop {
-    sdelay period
     read pos to posEst
     read speed to speedEst
     cond if gtInt(|posEst|, 0) {
       var posDist : TSV(Dist(Pos)) = maxDistPosTsv(posEst)
       infer d <- brakeModel(m, posDist, speedEst) particles 1000
-      // NOTE(larshum, 2023-05-12): We compute the expected number of
-      // nanoseconds until we crash and determine the latest point at which we
-      // need to start braking based on the provided safety margin parameter.
+
+      // NOTE(larshum, 2023-05-14): We extract the median of the estimated
+      // timestamps as the time until we need to brake. We also include the
+      // safety margin parameter to provide some leeway.
       var nanosUntilBrake : Int =
-        addInt(floorToInt(expectedValue(samples d)), timestamp(posDist))
+        addInt(floorToInt(medianValue(samples d)), timestamp(posDist))
       var ofs : Int = subInt(nanosUntilBrake, safetyMargin)
       write 0.0 to brake offset ofs
     } else {}
+    sdelay period
   }
 }
 
@@ -466,7 +468,7 @@ network {
   task leftDist = tofDistance(500ms)
   task rightDist = tofDistance(500ms)
   task pos = positionEstimate(1s)
-  task brake = brakeEstimate(500ms, 200ms)
+  task brake = brakeEstimate(500ms, 1s)
 
   // Network specification
   speedLeft -> speedEst.lspeed
