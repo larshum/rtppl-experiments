@@ -340,7 +340,7 @@ template positionEstimate(period : Int) {
 
 // Estimate the time at which the car needs to start braking in order to
 // prevent a crash.
-model crashBrake(m : RoomMap, posEst : TSV(Dist(Pos)),
+model brakeModel(m : RoomMap, posEst : TSV(Dist(Pos)),
                  speedEst : [TSV(Dist(Float))]) : Float {
   assume posPrev ~ value(posEst)
 
@@ -434,7 +434,8 @@ template brakeEstimate(period : Int, safetyMargin : Int) {
       // need to start braking based on the provided safety margin parameter.
       var nanosUntilBrake : Int =
         addInt(floorToInt(expectedValue(samples d)), timestamp(posDist))
-      write 0.0 to brake offset subInt(nanosUntilBrake, safetyMargin)
+      var ofs : Int = subInt(nanosUntilBrake, safetyMargin)
+      write 0.0 to brake offset ofs
     } else {}
   }
 }
