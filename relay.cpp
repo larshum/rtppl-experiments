@@ -5,6 +5,7 @@
 #include <csignal>
 #include <cstdio>
 #include <fcntl.h>
+#include <string.h>
 #include <unistd.h>
 
 struct payload {
