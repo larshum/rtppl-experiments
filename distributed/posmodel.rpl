@@ -12,6 +12,7 @@ type SensorData = { ofs : Offset, obs : [TSV(Dist(Float))], maxRange : Float }
 
 const roomBlockWidth : Float = 0.1
 const maxSpeed : Float = 0.5
+const maxAcceleration : Float = 0.2
 const wheelCircumference : Float = 0.35
 const ultrasonicMaxRange : Float = 4.0
 const tofMaxRange : Float = 2.0
@@ -131,43 +132,40 @@ def maxDistFloatTsv(tsvs : [TSV(Dist(Float))]) : TSV(Dist(Float)) {
   return acc
 }
 
-// We estimate the current speed of the car based on the observed speeds from
-// the left and right wheels. Note that this model does not make use of earlier
-// estimations, as the current speed of the car does not depend much on the
-// speed during our previous estimation. (it might be a good idea to include
-// that as well)
-model speedModel(prior : Dist(Float), obs : [TSV(Float)]) : Float {
-  // Start from our earlier estimation of the speed (in meters per second).
-  assume vprev ~ prior
-
-  // Our new belief of the speed is normally distributed around our old belief.
-  assume v ~ Gaussian(vprev, 0.1)
-  cond if v < 0.0 || v > maxSpeed {
-    degenerate
-  } else {
-    loop for tsv in obs {
-      var sigma : Float = timeRelativeSigma(timestamp(tsv)) / 10.0
-      var rpm : Float = value(tsv)
-      var mps : Float = rpm * wheelCircumference / 60.0
-      observe mps ~ Gaussian(v, sigma)
-    }
+// Estimate the current speed of the car through the given observed speeds,
+// using Bayesian linear regression. The current implementation does not make
+// use of our prior knowledge of the speed.
+model speedModel(speedObs : [TSV(Float)]) : Float {
+  assume m ~ Gaussian(0.0, maxAcceleration)
+  assume b ~ Uniform(0.0, maxSpeed)
+  assume sigma ~ Gamma(1.0, 1.0)
+  // NOTE(larshum, 2023-05-15): We use Bayesian linear regression to estimate
+  // the solution to the function f(t) = m * t + b, where t is the timestamp in
+  // seconds. We use our prior estimation as our initial value.
+  loop for tsv in speedObs {
+    var ts = intToFloat(timestamp(tsv)) / intToFloat(1s)
+    var rpm = value(tsv)
+    var mps = rpm * wheelCircumference / 60.0
+    observe mps ~ Gaussian(m * ts + b, sigma)
   }
-  resample
-  return v
+  // NOTE(larshum, 2023-05-15): We seek the value of the function f(t) at t = 0
+  // (the logically local time).
+  return b
 }
 
 template speedEst(period : Int) {
   input lspeed : Float
   input rspeed : Float
   output speed : Dist(Float)
-  var d : Dist(Float) = Uniform(0.0, maxSpeed)
-  loop d {
+  loop {
     sdelay period
-    read lspeed to lin
-    read rspeed to rin
-    var obs : [TSV(Float)] = concat(lin, rin)
-    infer d <- speedModel(d, obs) particles 1000
-    write d to speed
+    read lspeed to lObs
+    read rspeed to rObs
+    var obs = concat(lObs, rObs)
+    cond if gtInt(|obs|, 0) {
+      infer d <- speedModel(obs) particles 1000
+      write d to speed
+    } else {}
   }
 }
 
