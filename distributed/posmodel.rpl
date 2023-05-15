@@ -244,10 +244,11 @@ model initialPositionModel(blocks : [Coordinate]) : Pos {
 }
 
 // The position denotes our belief of the center of the car.
-def estimateDistance(m : RoomMap, ofs : Offset, p : Pos, eps : Float) : Float {
+def estimateDistance(ofs : Offset, p : Pos, inBounds : Pos -> Bool) : Float {
+  var eps : Float = 0.05
   p = positionAtOffset(p, ofs)
   var acc : {d : Float, p : Pos} = {d = 0.0, p = p}
-  loop acc while withinRoomBounds(m, acc.p) {
+  loop acc while inBounds(acc.p) {
     var p : Pos = acc.p
     p.x = p.x + eps * cos(p.direction)
     p.y = p.y + eps * sin(p.direction)
@@ -258,7 +259,8 @@ def estimateDistance(m : RoomMap, ofs : Offset, p : Pos, eps : Float) : Float {
 }
 
 model observeSensor(m : RoomMap, pos : Pos, s : SensorData) : Unit {
-  var estDist : Float = estimateDistance(m, s.ofs, pos, 0.05)
+  var inBounds : Pos -> Bool = withinRoomBounds(m)
+  var estDist : Float = estimateDistance(s.ofs, pos, inBounds)
   loop for tsv in s.obs {
     var sigma : Float = timeRelativeSigma(timestamp(tsv)) / 10.0
     assume obsDist ~ value(tsv)
@@ -355,9 +357,9 @@ model brakeModel(m : RoomMap, posEst : TSV(Dist(Pos)),
                  speedEst : [TSV(Dist(Float))]) : Float {
   assume posPrev ~ value(posEst)
 
-  // Estimate the current speed of the car. If we have any speed estimations,
-  // we use the most recent one as our basis, and otherwise we choose a random
-  // speed.
+  // Estimate the speed of the car at the previous position. If we have any
+  // speed estimations, we use the most recent one as our basis, and otherwise
+  // we choose a random speed.
   cond v if gtInt(|speedEst|, 0) {
     var speed : TSV(Dist(Float)) = maxDistFloatTsv(speedEst)
     assume vEst ~ value(speed)
@@ -371,8 +373,6 @@ model brakeModel(m : RoomMap, posEst : TSV(Dist(Pos)),
   // zero to avoid an infinite time until the crash.
   v = clamp(v, 0.01, maxSpeed)
 
-  assume d ~ Gaussian(posPrev.direction, pi / 16.0)
-
   // TODO(larshum, 2023-05-12): This is an estimate based on how the car
   // behaves in the simulator. This should be tuned based on the behavior on
   // the car.
@@ -382,8 +382,9 @@ model brakeModel(m : RoomMap, posEst : TSV(Dist(Pos)),
   // can drive until it crashes into a wall (in nanoseconds) from the previous
   // position. We use this to estimate the time at which we need to start
   // braking.
-  var crashDist : Float = estimateDistance(m, zeroOffset, posPrev, 0.01)
-  return (crashDist - brakeDistance) / v * intToFloat(1s)
+  var inBounds : Pos -> Bool = carWithinRoomBounds(m)
+  var crashDist : Float = estimateDistance(zeroOffset, posPrev, inBounds)
+  return intToFloat(1s) * (crashDist - brakeDistance) / v
 }
 
 def cmpFloat(l : Float, r : Float) : Int {
@@ -423,6 +424,10 @@ template brakeEstimate(period : Int, safetyMargin : Int) {
   input speed : Dist(Float)
   output brake : Float
   var m : RoomMap = readRoomMap ()
+  // NOTE(larshum, 2023-05-15): We assume the car is initially stationary. The
+  // first position estimations will have a lot of uncertainty, so we assume it
+  // takes a few seconds until the car has to start braking.
+  sdelay 3s
   loop {
     read pos to posEst
     read speed to speedEst
