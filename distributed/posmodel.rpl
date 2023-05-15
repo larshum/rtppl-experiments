@@ -174,8 +174,8 @@ template speedEst(period : Int) {
 // Estimates the "true" distance between the car and an obstacle given
 // observations from one or multiple sensors placed at a certain direction.
 model distanceModel(period : Int, prior : Dist(Float), obs : [TSV(Float)],
-                  maxSensorRange : Float) : Float {
-  assume d ~ Uniform(0.0, 10.0)
+                    maxDistance : Float, maxSensorRange : Float) : Float {
+  assume d ~ Uniform(0.0, maxDistance)
   cond if eqInt(|obs|, 0) {
     // If we have no new observations, we sample from the distribution of
     // distances from our previous estimation and treat that as an observation.
@@ -185,18 +185,16 @@ model distanceModel(period : Int, prior : Dist(Float), obs : [TSV(Float)],
     loop for tsv in obs {
       var sigma : Float = timeRelativeSigma(timestamp(tsv))
       var obsDist : Float = value(tsv)
-      // We include a probability that a given observed value is noise in the
-      // model, in which case we completely ignore the observed value.
-      // TODO: choose this value based on real-world data and choose exact
-      // behavior based on which kind of sensor we are estimating for.
-      assume obsNotNoise ~ Bernoulli(0.9)
-      cond if obsNotNoise {
-        cond if obsDist > maxSensorRange {
-          cond if not(d > maxSensorRange) { degenerate } else {}
-        } else {
-          observe obsDist ~ Gaussian(d, sigma)
-        }
-      } else {}
+      // If the observed distance is equal to the maximum range, the actual
+      // distance could be anywhere in the range [maxRange, maxDist), where
+      // maxDist is a known maximum distance (e.g., the diagonal of the map).
+      cond if obsDist != maxSensorRange {
+        observe obsDist ~ Gaussian(d, sigma)
+      } else {
+        cond if d < maxSensorRange {
+          degenerate
+        } else {}
+      }
     }
   }
   return d
@@ -208,11 +206,12 @@ model distanceModel(period : Int, prior : Dist(Float), obs : [TSV(Float)],
 template ultrasonicDistance(period : Int) {
   input distObs : Float
   output dist : Dist(Float)
-  var d : Dist(Float) = Uniform(0.0, 10.0)
+  var maxDistance : Float = 10.0
+  var d : Dist(Float) = Uniform(0.0, maxDistance)
   loop d {
     sdelay period
     read distObs to obs
-    infer d <- distanceModel(period, d, obs, ultrasonicMaxRange) particles 1000
+    infer d <- distanceModel(period, d, obs, maxDistance, ultrasonicMaxRange) particles 1000
     write d to dist
   }
 }
@@ -220,11 +219,12 @@ template ultrasonicDistance(period : Int) {
 template tofDistance(period : Int) {
   input distObs : Float
   output dist : Dist(Float)
-  var d : Dist(Float) = Uniform(0.0, 10.0)
+  var maxDistance : Float = 10.0
+  var d : Dist(Float) = Uniform(0.0, maxDistance)
   loop d {
     sdelay period
     read distObs to obs
-    infer d <- distanceModel(period, d, obs, tofMaxRange) particles 1000
+    infer d <- distanceModel(period, d, obs, maxDistance, tofMaxRange) particles 1000
     write d to dist
   }
 }
@@ -264,7 +264,7 @@ model observeSensor(m : RoomMap, pos : Pos, s : SensorData) : Unit {
   loop for tsv in s.obs {
     var sigma : Float = timeRelativeSigma(timestamp(tsv)) / 10.0
     assume obsDist ~ value(tsv)
-    cond if obsDist < s.maxRange {
+    cond if obsDist != s.maxRange {
       observe obsDist ~ Gaussian(estDist, sigma)
     } else {}
   }
