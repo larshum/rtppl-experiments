@@ -111,6 +111,13 @@ def stateToCoordinate(m : RoomMap, s : State) : Coordinate {
   return {row = floorToInt(s.y / roomBlockWidth), col = floorToInt(s.x / roomBlockWidth)}
 }
 
+def stateAtOffset(s : State, ofs : Offset) : State {
+  s.direction = s.direction + ofs.direction
+  s.x = s.x + ofs.dist * cos(s.direction)
+  s.y = s.y + ofs.dist * sin(s.direction)
+  return s
+}
+
 // Determine whether the coordinate of the map corresponding to the position
 // represented by a given state is within the bounds of the map.
 def withinRoomBounds(m : RoomMap, s : State) : Bool {
@@ -122,6 +129,21 @@ def withinRoomBounds(m : RoomMap, s : State) : Bool {
     res = not(m.data[c.row][c.col])
   }
   return res
+}
+
+def carWithinRoomBounds(m : RoomMap, center : State) : Bool {
+  var sensorOffsets : [Offset] = [
+    frontLeftOffset, frontRightOffset, rearLeftOffset, rearRightOffset,
+    sideLeftOffset, sideRightOffset
+  ]
+  var acc : Bool = true
+  loop acc for ofs in sensorOffsets {
+    cond acc if acc {
+      var s : State = stateAtOffset(center, ofs)
+      acc = withinRoomBounds(m, s)
+    } else {}
+  }
+  return acc
 }
 
 def cmpTimestamp(l : Int, r : Int) : Int {
@@ -200,27 +222,25 @@ model transitionModel(wheelObs : WheelObs, s0 : State, period : Int) : State {
   return value(accState)
 }
 
-def stateWithOffsets(s : State, offset : Offset) : State {
-  s.direction = s.direction + offset.direction
-  s.x = s.x + offset.dist * cos(s.direction)
-  s.y = s.y + offset.dist * sin(s.direction)
-  return s
+def estimateDistance(s : State, inBounds : State -> Bool) : Float {
+  var eps : Float = 0.05
+  var acc : {d : Float, s : State} = { d = 0.0, s = s }
+  loop acc while inBounds(acc.s) {
+    var s : State = acc.s
+    s.x = s.x + eps * cos(s.direction)
+    s.y = s.y + eps * sin(s.direction)
+    acc.s = s
+    acc.d = acc.d + eps
+  }
+  return acc.d
 }
 
 // Estimates the distance that would be observed by the car if it was in the
 // provided state.
 def expectedObservedDistance(m : RoomMap, o : Offset, s : State) : Float {
-  var sprime : State = stateWithOffsets(s, o)
-  var eps : Float = 0.05
-  var acc : {d : Float, s : State} = { d = 0.0, s = sprime }
-  loop acc while withinRoomBounds(m, acc.s) {
-    var sprime : State = acc.s
-    sprime.x = sprime.x + eps * cos(sprime.direction)
-    sprime.y = sprime.y + eps * sin(sprime.direction)
-    acc.s = sprime
-    acc.d = acc.d + eps
-  }
-  return acc.d
+  var sprime : State = stateAtOffset(s, o)
+  var inBounds : State -> Bool = withinRoomBounds(m)
+  return estimateDistance(sprime, inBounds)
 }
 
 def longRangeSensorData(expectedDistance : State -> Float, obs : TSV(Float)) : SensorData {
@@ -278,20 +298,20 @@ model initialPositionModel(blocks : [Coordinate]) : State {
   // NOTE: The commented-out parts assume we have no knowledge of the initial
   // position of the car. As this does not seem to perform very well, we use a
   // more significantly more specific initial position.
-  var c : Coordinate = randElemExn(blocks)
-  var x : Float = intToFloat(c.col) * roomBlockWidth
-  var y : Float = intToFloat(c.row) * roomBlockWidth
-  assume xOffset ~ Uniform(0.0, roomBlockWidth)
-  assume yOffset ~ Uniform(0.0, roomBlockWidth)
-  assume direction ~ Uniform(0.0, 2.0 * pi)
-  return {
-    x = x + xOffset, y = y + yOffset, direction = direction,
-    speed = 0.0, steeringAngle = 0.0
-  }
-  // var direction : Float = pi
-  // assume x ~ Gaussian(10.0, 0.5)
-  // assume y ~ Gaussian(2.0, 0.5)
-  // return {x = x, y = y, direction = pi, speed = 0.0, steeringAngle = 0.0}
+  // var c : Coordinate = randElemExn(blocks)
+  // var x : Float = intToFloat(c.col) * roomBlockWidth
+  // var y : Float = intToFloat(c.row) * roomBlockWidth
+  // assume xOffset ~ Uniform(0.0, roomBlockWidth)
+  // assume yOffset ~ Uniform(0.0, roomBlockWidth)
+  // assume direction ~ Uniform(0.0, 2.0 * pi)
+  // return {
+  //   x = x + xOffset, y = y + yOffset, direction = direction,
+  //   speed = 0.0, steeringAngle = 0.0
+  // }
+  var direction : Float = pi
+  assume x ~ Gaussian(10.0, 0.5)
+  assume y ~ Gaussian(2.0, 0.5)
+  return {x = x, y = y, direction = pi, speed = 0.0, steeringAngle = 0.0}
 }
 
 def initialPosition(m : RoomMap) : Dist(State) {
@@ -305,7 +325,7 @@ def initialPosition(m : RoomMap) : Dist(State) {
       } else {}
     }
   }
-  infer d <- initialPositionModel(blocks) particles 1000
+  infer d <- initialPositionModel(blocks) particles 2500
   return d
 }
 
@@ -316,7 +336,7 @@ model positionModel(m : RoomMap, d : Dist(State), distObs : DistanceObs,
                   wheelObs : WheelObs, period : Int) : State {
   assume state ~ d
   var nextState : State = transitionModel(wheelObs, state, period)
-  cond if withinRoomBounds(m, nextState) {
+  cond if carWithinRoomBounds(m, nextState) {
     observationModel(m, distObs, state, nextState, period)
   } else {
     degenerate
@@ -351,8 +371,6 @@ template positioning(period : Int) {
   input steeringAngle : Float
   output posDist : Dist(State)
 
-  var posBudget : Int = subInt(period, 100ms)
-
   // TODO(larshum, 2023-04-14): For now, this is implemented through a runtime
   // function. How should it work in the end?
   var m : RoomMap = readRoomMap()
@@ -380,7 +398,7 @@ template positioning(period : Int) {
     read speedRight to wheelObs.speedRight
     read steeringAngle to wheelObs.steeringAngle
 
-    infer d <- positionModel(m, d, distObs, wheelObs, period) budget posBudget
+    infer d <- positionModel(m, d, distObs, wheelObs, period) particles 2500
     write d to posDist
   }
 }
@@ -393,36 +411,64 @@ def countTrue(bools : [Bool]) : Int {
   return acc
 }
 
-model brakingModel(m : RoomMap, statesTsv : TSV(Dist(State)), lookahead : Int) : Bool {
+model brakingModel(m : RoomMap, statesTsv : TSV(Dist(State))) : Float {
   assume sprev ~ value(statesTsv)
 
-  var ts : Int = timestamp(statesTsv)
-  assume v ~ Gaussian(sprev.speed, 0.1)
-  assume dir ~ Gaussian(sprev.direction, pi / 4.0)
-  var dist : Float = sprev.speed * intToFloat(subInt(lookahead, ts)) / intToFloat(1s)
-  var s : State = {
-    x = sprev.x + dist * cos(dir), y = sprev.y + dist * sin(dir), speed = v,
-    direction = dir, steeringAngle = sprev.steeringAngle
-  }
+  var brakeDistance : Float = 5.0 * sprev.speed * sprev.speed
 
-  return not(withinRoomBounds(m, s))
+  var inBounds : State -> Bool = carWithinRoomBounds(m)
+  var crashDist : Float = estimateDistance(sprev, inBounds)
+  return intToFloat(1s) * (crashDist - brakeDistance) / sprev.speed
 }
 
-template braking(period : Int) {
-  input pos : Dist(State)
+def cmpFloat(l : Float, r : Float) : Int {
+  var res : Int = 0
+  cond res if l > r {
+    res = 1
+  } else {
+    cond res if l < r {
+      res = negInt(1)
+    } else {}
+  }
+  return res
+}
+
+def medianValue(x : {s : [Float], w : [Float]}) : Float {
+  var s : [Float] = []
+  var xs : [Float] = x.s
+  loop s for i in range(0, |xs|) {
+    s = push(s, xs[i])
+  }
+  s = sort(cmpFloat, s)
+  return s[divInt(|s|, 2)]
+}
+
+def maxDistStateTsv(tsvs : [TSV(Dist(State))]) : TSV(Dist(State)) {
+  var acc : TSV(Dist(State)) = tsvs[0]
+  loop acc for i in range(1, |tsvs|) {
+    cond acc if gtInt(timestamp(tsvs[i]), timestamp(acc)) {
+      acc = tsvs[i]
+    } else {}
+  }
+  return acc
+}
+
+template braking(period : Int, safetyMargin : Int) {
+  input state : Dist(State)
   output brake : Float
   var m : RoomMap = readRoomMap()
+  sdelay 3s
   loop {
-    sdelay period
-    read pos to posIn
-    cond if gtInt(|posIn|, 0) {
-      var s : TSV(Dist(State)) = posIn[subInt(|posIn|, 1)]
-      infer d <- brakingModel(m, s, 1s) particles 1000
-      var res : [Bool] = samples d
-      cond if gtInt(countTrue(res), 700) {
-        write 1.0 to brake
-      } else {}
+    read state to stateEst
+    cond if gtInt(|stateEst|, 0) {
+      var s : TSV(Dist(State)) = maxDistStateTsv(stateEst)
+      infer d <- brakingModel(m, s) particles 1000
+      var nanosUntilBrake : Int =
+        addInt(floorToInt(medianValue(samples d)), timestamp(s))
+      var ofs : Int = subInt(nanosUntilBrake, safetyMargin)
+      write 0.0 to brake offset ofs
     } else {}
+    sdelay period
   }
 }
 
@@ -443,7 +489,7 @@ network {
   actuator brake : Float
 
   task pos = positioning(1s)
-  task brake = braking(1s)
+  task brake = braking(500ms, 500ms)
 
   frontLeft -> pos.frontLeft
   frontRight -> pos.frontRight
@@ -454,6 +500,6 @@ network {
   speedLeft -> pos.speedLeft
   speedRight -> pos.speedRight
   steeringAngle -> pos.steeringAngle
-  pos.posDist -> brake.pos
+  pos.posDist -> brake.state
   brake.brake -> brake
 }
