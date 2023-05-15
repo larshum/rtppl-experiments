@@ -275,11 +275,7 @@ model observeSensor(s : SensorData, s0 : State, s1 : State, period : Int) : Unit
   var obsDist : Float = value(s.obs)
   cond if obsDist != s.maxRange {
     observe obsDist ~ Gaussian(estimatedDistance, s.stddev)
-  } else {
-    cond if estimatedDistance < s.maxRange {
-      degenerate
-    } else {}
-  }
+  } else {}
 }
 
 model observationModel(m : RoomMap, distObs : DistanceObs,
@@ -345,6 +341,7 @@ model positionModel(m : RoomMap, d : Dist(State), distObs : DistanceObs,
   } else {
     degenerate
   }
+  resample
   return nextState
 }
 
