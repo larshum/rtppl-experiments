@@ -132,6 +132,11 @@ def maxDistFloatTsv(tsvs : [TSV(Dist(Float))]) : TSV(Dist(Float)) {
   return acc
 }
 
+// Converts a given relative timestamp, in nanoseconds, to a number in seconds.
+def timestampToSeconds(ts : Int) : Float {
+  return intToFloat(ts) / intToFloat(1s)
+}
+
 // Estimate the current speed of the car through the given observed speeds,
 // using Bayesian linear regression. The current implementation does not make
 // use of our prior knowledge of the speed.
@@ -143,7 +148,7 @@ model speedModel(speedObs : [TSV(Float)]) : Float {
   // the solution to the function f(t) = m * t + b, where t is the timestamp in
   // seconds. We use our prior estimation as our initial value.
   loop for tsv in speedObs {
-    var ts = intToFloat(timestamp(tsv)) / intToFloat(1s)
+    var ts = timestampToSeconds(timestamp(tsv))
     var rpm = value(tsv)
     var mps = rpm * wheelCircumference / 60.0
     observe mps ~ Gaussian(m * ts + b, sigma)
@@ -167,6 +172,40 @@ template speedEst(period : Int) {
       write d to speed
     } else {}
   }
+}
+
+def absmax(s : [TSV(Float)]) : Float {
+  var acc = 0.0
+  loop acc for x in s {
+    var v = value(x)
+    cond acc if 0.0-v > acc || v > acc {
+      acc = x
+    } else {}
+  }
+  return acc
+}
+
+model distanceModel(distanceObs : [TSV(Float)], steeringAngleObs : [TSV(Float)],
+                    speedEst : TSV(Dist(Float)), maxSensorRange : Float) : Float {
+  assume m ~ Gaussian(0.0, ???)
+  assume b ~ Uniform(0.0, maxDistance)
+  assume sigma ~ Gamma(1.0, 1.0)
+
+  // NOTE(larshum, 2023-05-15): If we have observed non-zero steering inputs,
+  // it means the car has been turning. As the observed distance may change
+  // drastically while turning, we handle this as a separate case.
+  //
+  // What if we're estimating the distance of the left sensor, when driving in
+  // a straight line? The speed says _nothing_ about how it changes...
+  cond if absmax(steeringAngleObs) > 0.0 {
+    degenerate
+  } else {
+    loop for tsv in distanceObs {
+      var ts = timestampToSeconds(timestamp(tsv))
+      observe value(tsv) ~ Gaussian(m * ts + b, sigma)
+    }
+  }
+  return b
 }
 
 // Estimates the "true" distance between the car and an obstacle given
