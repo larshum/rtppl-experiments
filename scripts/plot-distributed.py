@@ -48,13 +48,13 @@ cols = im.width
 os.chdir("distributed")
 
 inputs = {
-    "pos": read_pos_dists("pos-pos.txt"),
-    "front-left": read_float_dists("frontLeftDist-dist.txt"),
-    "front-right": read_float_dists("frontRightDist-dist.txt"),
-    "rear-left": read_float_dists("rearLeftDist-dist.txt"),
-    "rear-right": read_float_dists("rearRightDist-dist.txt"),
-    "left": read_float_dists("leftDist-dist.txt"),
-    "right": read_float_dists("rightDist-dist.txt"),
+    "pos": read_pos_dists("pos-posEst.txt"),
+    "front-left": read_float_dists("frontLeft-distEst.txt"),
+    "front-right": read_float_dists("frontRight-distEst.txt"),
+    "rear-left": read_float_dists("rearLeft-distEst.txt"),
+    "rear-right": read_float_dists("rearRight-distEst.txt"),
+    "left": read_float_dists("leftSide-distEst.txt"),
+    "right": read_float_dists("rightSide-distEst.txt"),
     "speed": read_float_dists("speedEst-speed.txt")
 }
 true_vals = read_opt_floats("true-values.txt")
