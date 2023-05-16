@@ -156,6 +156,11 @@ void notify_termination(int sig) {
   exit(0);
 }
 
+void emergency_stop(int sig) {
+  close_fds();
+  exit(0);
+}
+
 int main(int argc, char **argv) {
   id = argv[1];
   in = open(id.c_str(), O_RDWR);
@@ -175,7 +180,7 @@ int main(int argc, char **argv) {
   if (out == -1) fail_open(target.c_str());
   out_fds.push_back(out);
   signal(SIGINT, notify_termination);
-  signal(SIGKILL, notify_termination);
+  signal(SIGKILL, emergency_stop);
   std::thread reader(read_task);
   reader.detach();
   write_task();
