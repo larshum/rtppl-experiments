@@ -37,3 +37,5 @@ for dst, srcs in data["actuator_ins"].items():
     for src in srcs:
         try_remove(f"{src}")
 try_remove(nwfile)
+try_remove("sa.txt")
+try_remove("true-values.txt")
