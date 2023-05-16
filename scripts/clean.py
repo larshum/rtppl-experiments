@@ -1,26 +1,39 @@
 # Script for removing all generated files based on the contents of the
 # generated network description file.
 
-import json
 import os
 import sys
+
+import network
 
 def try_remove(f):
     try:
         os.remove(f)
     except FileNotFoundError:
         pass
+    try:
+        os.remove(f"{f}.txt")
+    except FileNotFoundError:
+        pass
 
 path = sys.argv[1]
-nwfile = f"{path}/network.json"
-with open(nwfile, "r") as f:
-    data = json.load(f)
+os.chdir(path)
+nwfile = f"network.json"
+data = network.read_network(nwfile)
 
+for src, dsts in data["sensor_outs"].items():
+    try_remove(f"sensor-{src}")
+    for dst in dsts:
+        try_remove(f"{dst}")
+for src, dsts in data["relays"].items():
+    try_remove(f"{src}")
+    for dst in dsts:
+        try_remove(f"{dst}")
 for task in data["tasks"]:
-    try_remove(f"{path}/{task}")
-    try_remove(f"{path}/{task}.mc")
-for conn in data["connections"]:
-    src, dst = conn["from"], conn["to"]
-    try_remove(f"{path}/{src}")
-    try_remove(f"{path}/{dst}")
+    try_remove(f"{task}")
+    try_remove(f"{task}.mc")
+for dst, srcs in data["actuator_ins"].items():
+    try_remove(f"actuator-{dst}")
+    for src in srcs:
+        try_remove(f"{src}")
 try_remove(nwfile)

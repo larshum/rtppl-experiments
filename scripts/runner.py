@@ -2,8 +2,11 @@ import json
 import os
 import signal
 import subprocess
+import stat
 import sys
 import time
+
+import network
 
 procs = []
 
@@ -11,46 +14,19 @@ def handler(sig, frame):
     print("Killing remaining processes");
     for proc in procs:
         proc.send_signal(signal.SIGINT)
+        proc.send_signal(signal.SIGINT)
         try:
             proc.wait(0.5)
         except subprocess.TimeoutExpired:
-            proc.terminate()
+            proc.send_signal(signal.SIGKILL)
             proc.wait()
     sys.exit(0)
 
-def read_network(file):
-    with open(file) as f:
-        data = json.loads(f.read())
-
-    # We ignore the brake task and any connections involving it
-    tasks = data["tasks"]
-
-    # We only run the relay to deliver data between tasks
-    relays = {}
-    sensor_outs = {}
-    actuator_ins = {}
-    for c in data["connections"]:
-        src = c["from"]
-        dst = c["to"]
-        if src in data["sensors"]:
-            if not src in sensor_outs:
-                sensor_outs[src] = []
-            sensor_outs[src].append(dst)
-        elif dst in data["actuators"]:
-            if not dst in actuator_ins:
-                actuator_ins[dst] = []
-            actuator_ins[dst].append(src)
-        else:
-            if not src in relays:
-                relays[src] = []
-            relays[src].append(dst)
-
-    return {
-        "tasks": tasks,
-        "relays": relays,
-        "sensor_outs": sensor_outs,
-        "actuator_ins": actuator_ins
-    }
+def ispipe(f):
+    try:
+        return stat.S_ISFIFO(os.stat(f).st_mode)
+    except:
+        return False
 
 signal.signal(signal.SIGINT, handler)
 
@@ -60,23 +36,29 @@ if not os.path.isfile("relay"):
 map_file = sys.argv[1]
 path = sys.argv[2]
 os.chdir(path)
-nw = read_network("network.json")
+nw = network.read_network("network.json")
+for src, dsts in nw["sensor_outs"].items():
+    src = f"sensor-{src}"
+    if not ispipe(src):
+        os.mkfifo(src)
+    cmd = ["../relay", src] + dsts
+    print(cmd)
+    procs.append(subprocess.Popen(cmd))
 for src, dsts in nw["relays"].items():
     cmd = ["../relay", src] + dsts
     print(cmd)
-    procs.append(subprocess.Popen(cmd, stdin=None, stdout=None, stderr=None))
-for src, dsts in nw["sensor_outs"].items():
-    pass
-    #for dst in dsts:
-    #    cmd = ["python3", "scripts/writer.py", f"car-data/{src}.txt", dst]
-    #    print(cmd)
-    #    procs.append(subprocess.Popen(cmd, stdin=None, stdout=None, stderr=None))
-for src, dsts in nw["actuator_ins"].items():
-    pass
+    procs.append(subprocess.Popen(cmd))
+for dst, srcs in nw["actuator_ins"].items():
+    dst = f"actuator-{dst}"
+    if not ispipe(dst):
+        os.mkfifo(dst)
+    cmd = ["../relay", srcs[0], dst]
+    print(cmd)
+    procs.append(subprocess.Popen(cmd))
 for task in nw["tasks"]:
     cmd = [f"./{task}", f"../{map_file}"]
     print(cmd)
-    procs.append(subprocess.Popen(cmd, stdin=None, stdout=None, stderr=None, env={"OCAMLRUNPARAM": "b"}))
+    procs.append(subprocess.Popen(cmd, env={"OCAMLRUNPARAM": "b"}))
 
 while True:
     live = []
