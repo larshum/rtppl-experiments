@@ -20,7 +20,7 @@ def read_opt_floats(f):
         tsvs = []
         ofs = 0
         while ofs < len(content):
-            ts, x, y, direction, flDist, frDist, rlDist, rrDist, lDist, rDist, speed = struct.unpack("=qdddddddddd", content[ofs:ofs+88])
+            ts, flDist, frDist, lDist, rDist, rlDist, rrDist, speed, x, y, direction = struct.unpack("=qdddddddddd", content[ofs:ofs+88])
             ofs += 88
             # Convert RPM to m/s
             speed = speed * 0.35 / 60.0
