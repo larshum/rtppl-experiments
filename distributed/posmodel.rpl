@@ -14,7 +14,7 @@ const roomBlockWidth : Float = 0.1
 const maxSpeed : Float = 0.5
 const maxAcceleration : Float = 0.2
 const wheelCircumference : Float = 0.35
-const ultrasonicMaxRange : Float = 4.0
+const usMaxRange : Float = 4.0
 const tofMaxRange : Float = 2.0
 
 const zeroOffset : Offset = { angle = 0.0, distance = 0.0, direction = 0.0 }
@@ -179,90 +179,144 @@ def absmax(s : [TSV(Float)]) : Float {
   loop acc for x in s {
     var v = value(x)
     cond acc if 0.0-v > acc || v > acc {
-      acc = x
+      acc = v
     } else {}
   }
   return acc
 }
 
-model distanceModel(distanceObs : [TSV(Float)], steeringAngleObs : [TSV(Float)],
-                    speedEst : TSV(Dist(Float)), maxSensorRange : Float) : Float {
-  assume m ~ Gaussian(0.0, ???)
+def maxDistFloatTimestamp(tsvs : [TSV(Dist(Float))]) : TSV(Dist(Float)) {
+  var acc = tsvs[0]
+  loop acc for tsv in tsvs {
+    cond acc if ltInt(timestamp(acc), timestamp(tsv)) {
+      acc = tsv
+    } else {}
+  }
+  return acc
+}
+
+def cmpFloatTimestamp(l : TSV(Float), r : TSV(Float)) : Int {
+  var acc = 0
+  cond acc if gtInt(timestamp(l), timestamp(r)) {
+    acc = 1
+  } else {
+    cond acc if ltInt(timestamp(l), timestamp(r)) {
+      acc = negInt(1)
+    } else {}
+  }
+  return acc
+}
+
+def maxFloatTimestamp(tsvs : [TSV(Float)]) : TSV(Float) {
+  var acc = tsvs[0]
+  loop acc for tsv in tsvs {
+    cond acc if ltInt(cmpFloatTimestamp(acc, tsv), 0) {
+      acc = tsv
+    } else {}
+  }
+  return acc
+}
+
+def cmpFloat(l : Float, r : Float) : Int {
+  var acc = 0
+  cond acc if l > r {
+    acc = 1
+  } else {
+    cond acc if l < r {
+      acc = negInt(1)
+    } else {}
+  }
+  return acc
+}
+
+def medianOfLastThreeFloatTsv(tsvs : [TSV(Float)]) : Float {
+  var n = |tsvs|
+  var a = value(tsvs[subInt(n, 3)])
+  var b = value(tsvs[subInt(n, 2)])
+  var c = value(tsvs[subInt(n, 1)])
+  var res = 0.0
+  cond res if a < b {
+    cond res if b < c {
+      res = b
+    } else {
+      res = c
+    }
+  } else {
+    cond res if a < c {
+      res = a
+    } else {
+      res = c
+    }
+  }
+  return res
+}
+
+model frontRearDistanceModel(distanceObs : [TSV(Float)],
+                             steeringAngleObs : [TSV(Float)],
+                             speedEst : TSV(Dist(Float)), maxDistance : Float,
+                             maxSensorRange : Float) : Float {
+  assume v ~ value(speedEst)
+  assume m ~ Gaussian(v, timestampToSeconds(timestamp(speedEst)) * maxAcceleration)
   assume b ~ Uniform(0.0, maxDistance)
   assume sigma ~ Gamma(1.0, 1.0)
 
-  // NOTE(larshum, 2023-05-15): If we have observed non-zero steering inputs,
-  // it means the car has been turning. As the observed distance may change
-  // drastically while turning, we handle this as a separate case.
-  //
-  // What if we're estimating the distance of the left sensor, when driving in
-  // a straight line? The speed says _nothing_ about how it changes...
-  cond if absmax(steeringAngleObs) > 0.0 {
-    degenerate
-  } else {
+  var res = b
+  cond res if absmax(steeringAngleObs) == 0.0 {
     loop for tsv in distanceObs {
       var ts = timestampToSeconds(timestamp(tsv))
       observe value(tsv) ~ Gaussian(m * ts + b, sigma)
     }
-  }
-  return b
-}
-
-// Estimates the "true" distance between the car and an obstacle given
-// observations from one or multiple sensors placed at a certain direction.
-model distanceModel(period : Int, prior : Dist(Float), obs : [TSV(Float)],
-                    maxDistance : Float, maxSensorRange : Float) : Float {
-  assume d ~ Uniform(0.0, maxDistance)
-  cond if eqInt(|obs|, 0) {
-    // If we have no new observations, we sample from the distribution of
-    // distances from our previous estimation and treat that as an observation.
-    assume dprev ~ prior
-    observe dprev ~ Gaussian(d, timeRelativeSigma(negInt(period)))
   } else {
-    loop for tsv in obs {
-      var sigma : Float = timeRelativeSigma(timestamp(tsv))
-      var obsDist : Float = value(tsv)
-      // If the observed distance is equal to the maximum range, the actual
-      // distance could be anywhere in the range [maxRange, maxDist), where
-      // maxDist is a known maximum distance (e.g., the diagonal of the map).
-      cond if obsDist != maxSensorRange {
-        observe obsDist ~ Gaussian(d, sigma)
-      } else {
-        cond if d < maxSensorRange {
-          degenerate
-        } else {}
-      }
-    }
+    res = medianOfLastThreeFloatTsv(distanceObs)
   }
-  return d
+  return res
 }
 
-// Estimates the distance observed by a particular sensor. This sensor is
-// assumed to be installed at the provided offset relative to the center of the
-// car.
-template ultrasonicDistance(period : Int) {
+template frontRearDistance(period : Int) {
   input distObs : Float
-  output dist : Dist(Float)
-  var maxDistance : Float = 10.0
-  var d : Dist(Float) = Uniform(0.0, maxDistance)
+  input steeringAngleObs : Float
+  input speedEst : Dist(Float)
+  output distEst : Dist(Float)
+  var maxDistance = 10.0
+  var acc = {
+    speed = tsv(0, Uniform(0.0, maxSpeed)),
+    d = Uniform(0.0, maxDistance)
+  }
+  loop acc {
+    sdelay period
+    read distObs to obs
+    read steeringAngleObs to saObs
+    read speedEst to speed
+    cond acc if gtInt(|speed|, 0) {
+      acc.speed = maxDistFloatTimestamp(speed)
+    } else {}
+    cond acc if absmax(saObs) == 0.0 || geqInt(|obs|, 3) {
+      var obs = sort(cmpFloatTimestamp, obs)
+      infer d <- frontRearDistanceModel(obs, saObs, acc.speed, maxDistance, usMaxRange)
+        particles 1000
+      acc.d = d
+    } else {}
+    write acc.d to distEst
+  }
+}
+
+model sideDistanceModel(distObs : [TSV(Float)]) : Float {
+  return medianOfLastThreeFloatTsv(distObs)
+}
+
+template sideDistance(period : Int) {
+  input distObs : Float
+  output distEst : Dist(Float)
+  var maxDistance = 10.0
+  var d = Uniform(0.0, maxDistance)
   loop d {
     sdelay period
     read distObs to obs
-    infer d <- distanceModel(period, d, obs, maxDistance, ultrasonicMaxRange) particles 1000
-    write d to dist
-  }
-}
-
-template tofDistance(period : Int) {
-  input distObs : Float
-  output dist : Dist(Float)
-  var maxDistance : Float = 10.0
-  var d : Dist(Float) = Uniform(0.0, maxDistance)
-  loop d {
-    sdelay period
-    read distObs to obs
-    infer d <- distanceModel(period, d, obs, maxDistance, tofMaxRange) particles 1000
-    write d to dist
+    cond d if geqInt(|obs|, 3) {
+      var obs = sort(cmpFloatTimestamp, obs)
+      infer d <- sideDistanceModel(obs) particles 1000
+    } else {}
+    write d to distEst
   }
 }
 
@@ -333,10 +387,10 @@ model positionModel(m : RoomMap, prior : Dist(Pos), flObs : [TSV(Dist(Float))],
     degenerate
   } else {
     var sensorData : [SensorData] = [
-      { ofs = frontLeftOffset, obs = flObs, maxRange = ultrasonicMaxRange },
-      { ofs = frontRightOffset, obs = frObs, maxRange = ultrasonicMaxRange },
-      { ofs = rearLeftOffset, obs = rlObs, maxRange = ultrasonicMaxRange },
-      { ofs = rearRightOffset, obs = rrObs, maxRange = ultrasonicMaxRange },
+      { ofs = frontLeftOffset, obs = flObs, maxRange = usMaxRange },
+      { ofs = frontRightOffset, obs = frObs, maxRange = usMaxRange },
+      { ofs = rearLeftOffset, obs = rlObs, maxRange = usMaxRange },
+      { ofs = rearRightOffset, obs = rrObs, maxRange = usMaxRange },
       { ofs = sideLeftOffset, obs = lObs, maxRange = tofMaxRange },
       { ofs = sideRightOffset, obs = rObs, maxRange = tofMaxRange }
     ]
@@ -357,7 +411,7 @@ template positionEstimate(period : Int) {
   input right : Dist(Float)
   input speed : Dist(Float)
   input steeringAngle : Float
-  output pos : Dist(Pos)
+  output posEst : Dist(Pos)
   var posBudget : Int = subInt(period, 100ms)
   var m : RoomMap = readRoomMap()
   var blocks : [Coordinate] = findFreeRoomCoordinates(m)
@@ -373,7 +427,7 @@ template positionEstimate(period : Int) {
     read speed to speedEst
     infer d <- positionModel(m, d, flEst, frEst, rlEst, rrEst, lEst, rEst, speedEst)
       budget posBudget
-    write d to pos
+    write d to posEst
   }
 }
 
@@ -464,21 +518,20 @@ template brakeEstimate(period : Int, safetyMargin : Int) {
   // NOTE(larshum, 2023-05-15): We assume the car is initially stationary. The
   // first position estimations will have a lot of uncertainty, so we assume it
   // takes a few seconds until the car has to start braking.
-  sdelay 3s
-  loop {
+  sdelay 5s
+  var nanosUntilBrake : Float = 1.0 / 0.0
+  loop nanosUntilBrake while nanosUntilBrake > 0.0 {
     read pos to posEst
     read speed to speedEst
-    cond if gtInt(|posEst|, 0) {
+    cond nanosUntilBrake if gtInt(|posEst|, 0) {
       var posDist : TSV(Dist(Pos)) = maxDistPosTsv(posEst)
       infer d <- brakeModel(m, posDist, speedEst) particles 1000
-
-      // NOTE(larshum, 2023-05-14): We extract the median of the estimated
-      // timestamps as the time until we need to brake. We also include the
-      // safety margin parameter to provide some leeway.
-      var nanosUntilBrake : Int =
-        addInt(floorToInt(medianValue(samples d)), timestamp(posDist))
-      var ofs : Int = subInt(nanosUntilBrake, safetyMargin)
-      write 0.0 to brake offset ofs
+      nanosUntilBrake = medianValue(samples d) + intToFloat(timestamp(posDist))
+    } else {}
+    nanosUntilBrake = nanosUntilBrake - intToFloat(period)
+    cond nanosUntilBrake if nanosUntilBrake < intToFloat(safetyMargin) {
+      write 0.0 to brake
+      nanosUntilBrake = 0.0
     } else {}
     sdelay period
   }
@@ -503,33 +556,53 @@ network {
   actuator brake : Float
 
   task speedEst = speedEst(500ms)
-  task frontLeftDist = ultrasonicDistance(500ms)
-  task frontRightDist = ultrasonicDistance(500ms)
-  task rearLeftDist = ultrasonicDistance(500ms)
-  task rearRightDist = ultrasonicDistance(500ms)
-  task leftDist = tofDistance(500ms)
-  task rightDist = tofDistance(500ms)
+  task frontLeft = frontRearDistance(500ms)
+  task frontRight = frontRearDistance(500ms)
+  task rearLeft = frontRearDistance(500ms)
+  task rearRight = frontRearDistance(500ms)
+  task leftSide = sideDistance(500ms)
+  task rightSide = sideDistance(500ms)
   task pos = positionEstimate(1s)
-  task brake = brakeEstimate(500ms, 1s)
+  task brake = brakeEstimate(500ms, 1500ms)
 
-  // Network specification
+  // Speed estimation inputs
   speedLeft -> speedEst.lspeed
   speedRight -> speedEst.rspeed
+
+  // Distance estimation inputs
+  frontLeft -> frontLeft.distObs
+  steeringAngle -> frontLeft.steeringAngleObs
+  speedEst.speed -> frontLeft.speedEst
+
+  frontRight -> frontRight.distObs
+  steeringAngle -> frontRight.steeringAngleObs
+  speedEst.speed -> frontRight.speedEst
+
+  rearLeft -> rearLeft.distObs
+  steeringAngle -> rearLeft.steeringAngleObs
+  speedEst.speed -> rearLeft.speedEst
+
+  rearRight -> rearRight.distObs
+  steeringAngle -> rearRight.steeringAngleObs
+  speedEst.speed -> rearRight.speedEst
+
+  sideLeft -> leftSide.distObs
+
+  sideRight -> rightSide.distObs
+
+  // Position estimation inputs
+  frontLeft.distEst -> pos.frontLeft
+  frontRight.distEst -> pos.frontRight
+  rearLeft.distEst -> pos.rearLeft
+  rearRight.distEst -> pos.rearRight
+  leftSide.distEst -> pos.left
+  rightSide.distEst -> pos.right
   speedEst.speed -> pos.speed
-  speedEst.speed -> brake.speed
-  frontLeft -> frontLeftDist.distObs
-  frontRight -> frontRightDist.distObs
-  rearLeft -> rearLeftDist.distObs
-  rearRight -> rearRightDist.distObs
-  sideLeft -> leftDist.distObs
-  sideRight -> rightDist.distObs
-  frontLeftDist.dist -> pos.frontLeft
-  frontRightDist.dist -> pos.frontRight
-  rearLeftDist.dist -> pos.rearLeft
-  rearRightDist.dist -> pos.rearRight
-  leftDist.dist -> pos.left
-  rightDist.dist -> pos.right
   steeringAngle -> pos.steeringAngle
-  pos.pos -> brake.pos
+
+  // Brake estimation inputs
+  speedEst.speed -> brake.speed
+  pos.posEst -> brake.pos
+
   brake.brake -> brake
 }
