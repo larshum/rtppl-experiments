@@ -251,24 +251,42 @@ def medianOfLastThreeFloatTsv(tsvs : [TSV(Float)]) : Float {
   return res
 }
 
+def allOutOfRange(distanceObs : [TSV(Float)], maxRange : Float) : Bool {
+  var acc = true
+  loop acc for tsv in distanceObs {
+    cond acc if value(tsv) < maxRange {
+      acc = false
+    } else {}
+  }
+  return acc
+}
+
 model frontRearDistanceModel(distanceObs : [TSV(Float)],
                              steeringAngleObs : [TSV(Float)],
                              speedEst : TSV(Dist(Float)), maxDistance : Float,
                              maxSensorRange : Float) : Float {
   assume v ~ value(speedEst)
-  assume m ~ Gaussian(v, timestampToSeconds(timestamp(speedEst)) * maxAcceleration)
+  assume m ~ Gaussian(0.0, v)
   assume b ~ Uniform(0.0, maxDistance)
   assume sigma ~ Gamma(1.0, 1.0)
 
+  // NOTE(larshum, 2023-05-16): If all distance observations are outside of the
+  // range, the true distance can be anywhere beyond the maximum range of the
+  // sensor.
   var res = b
-  cond res if absmax(steeringAngleObs) == 0.0 {
-    loop for tsv in distanceObs {
-      var ts = timestampToSeconds(timestamp(tsv))
-      observe value(tsv) ~ Gaussian(m * ts + b, sigma)
-    }
+  cond res if allOutOfRange(distanceObs, maxSensorRange) {
+    assume res ~ Uniform(maxSensorRange, maxDistance)
   } else {
-    res = medianOfLastThreeFloatTsv(distanceObs)
+    cond res if absmax(steeringAngleObs) == 0.0 {
+      loop for tsv in distanceObs {
+        var ts = timestampToSeconds(timestamp(tsv))
+        observe value(tsv) ~ Gaussian(m * ts + b, sigma)
+      }
+    } else {
+      res = medianOfLastThreeFloatTsv(distanceObs)
+    }
   }
+
   return res
 }
 
@@ -300,8 +318,15 @@ template frontRearDistance(period : Int) {
   }
 }
 
-model sideDistanceModel(distObs : [TSV(Float)]) : Float {
-  return medianOfLastThreeFloatTsv(distObs)
+model sideDistanceModel(distObs : [TSV(Float)], maxSensorRange : Float,
+                        maxDistance : Float) : Float {
+  var res = 0.0
+  cond res if allOutOfRange(distObs, maxSensorRange) {
+    assume res ~ Uniform(maxSensorRange, maxDistance)
+  } else {
+    res = medianOfLastThreeFloatTsv(distObs)
+  }
+  return res
 }
 
 template sideDistance(period : Int) {
@@ -309,14 +334,14 @@ template sideDistance(period : Int) {
   output distEst : Dist(Float)
   var maxDistance = 10.0
   var d = Uniform(0.0, maxDistance)
-  loop d {
+  loop {
     sdelay period
     read distObs to obs
-    cond d if geqInt(|obs|, 3) {
+    cond if geqInt(|obs|, 3) {
       var obs = sort(cmpFloatTimestamp, obs)
-      infer d <- sideDistanceModel(obs) particles 1000
+      infer d <- sideDistanceModel(obs, tofMaxRange, maxDistance) particles 1000
+      write d to distEst
     } else {}
-    write d to distEst
   }
 }
 
@@ -351,34 +376,36 @@ def estimateDistance(ofs : Offset, p : Pos, inBounds : Pos -> Bool) : Float {
 
 model observeSensor(m : RoomMap, pos : Pos, s : SensorData) : Unit {
   var inBounds : Pos -> Bool = withinRoomBounds(m)
-  var estDist : Float = estimateDistance(s.ofs, pos, inBounds)
+  var expectedDist : Float = estimateDistance(s.ofs, pos, inBounds)
   loop for tsv in s.obs {
     var sigma : Float = timeRelativeSigma(timestamp(tsv)) / 10.0
-    assume obsDist ~ value(tsv)
-    cond if obsDist != s.maxRange {
-      observe obsDist ~ Gaussian(estDist, sigma)
-    } else {}
+    assume estDist ~ value(tsv)
+    cond if estDist < s.maxRange {
+      observe estDist ~ Gaussian(expectedDist, sigma)
+    } else {
+      degenerate
+    }
   }
 }
 
-model positionModel(m : RoomMap, prior : Dist(Pos), flObs : [TSV(Dist(Float))],
-                  frObs : [TSV(Dist(Float))], rlObs : [TSV(Dist(Float))],
-                  rrObs : [TSV(Dist(Float))], lObs : [TSV(Dist(Float))],
-                  rObs : [TSV(Dist(Float))], speedEst : [TSV(Dist(Float))]) : Pos {
-  assume posPrev ~ prior
+model positionModel(m : RoomMap, prior : Dist(Pos), flEst : [TSV(Dist(Float))],
+                    frEst : [TSV(Dist(Float))], rlEst : [TSV(Dist(Float))],
+                    rrEst : [TSV(Dist(Float))], lEst : [TSV(Dist(Float))],
+                    rEst : [TSV(Dist(Float))], speedEst : TSV(Dist(Float)),
+                    saObs : [TSV(Float)]) : Pos {
 
-  // Use the most recent speed estimation as a basis to estimate the current
-  // speed of the car. If no estimations are available, we have no knowledge of
-  // the speed.
-  cond v if gtInt(|speedEst|, 0) {
-    var speedDist : TSV(Dist(Float)) = maxDistFloatTsv(speedEst)
-    assume vprev ~ value(speedDist)
-    var s : Float = timeRelativeSigma(timestamp(speedDist))
-    assume v ~ Gaussian(vprev, s)
+  // Use a sample from our most recent speed estimation as a basis for
+  // estimating the position.
+  assume posPrev ~ prior
+  assume v ~ value(speedEst)
+
+  // NOTE(larshum, 2023-05-16): If we have not observed any steering, the
+  // direction remains the same as during our previous estimation.
+  cond d if absmax(saObs) == 0.0 {
+    d = posPrev.direction
   } else {
-    assume v ~ Uniform(0.0, maxSpeed)
+    assume d ~ Gaussian(posPrev.direction, pi / 8.0)
   }
-  assume d ~ Gaussian(posPrev.direction, pi / 4.0)
   var x : Float = posPrev.x + v * cos(d)
   var y : Float = posPrev.y + v * sin(d)
   var pos : Pos = {x = x, y = y, direction = d}
@@ -387,12 +414,12 @@ model positionModel(m : RoomMap, prior : Dist(Pos), flObs : [TSV(Dist(Float))],
     degenerate
   } else {
     var sensorData : [SensorData] = [
-      { ofs = frontLeftOffset, obs = flObs, maxRange = usMaxRange },
-      { ofs = frontRightOffset, obs = frObs, maxRange = usMaxRange },
-      { ofs = rearLeftOffset, obs = rlObs, maxRange = usMaxRange },
-      { ofs = rearRightOffset, obs = rrObs, maxRange = usMaxRange },
-      { ofs = sideLeftOffset, obs = lObs, maxRange = tofMaxRange },
-      { ofs = sideRightOffset, obs = rObs, maxRange = tofMaxRange }
+      { ofs = frontLeftOffset, obs = flEst, maxRange = usMaxRange },
+      { ofs = frontRightOffset, obs = frEst, maxRange = usMaxRange },
+      { ofs = rearLeftOffset, obs = rlEst, maxRange = usMaxRange },
+      { ofs = rearRightOffset, obs = rrEst, maxRange = usMaxRange },
+      { ofs = sideLeftOffset, obs = lEst, maxRange = tofMaxRange },
+      { ofs = sideRightOffset, obs = rEst, maxRange = tofMaxRange }
     ]
     loop for s in sensorData {
       observeSensor(m, pos, s)
@@ -416,7 +443,12 @@ template positionEstimate(period : Int) {
   var m : RoomMap = readRoomMap()
   var blocks : [Coordinate] = findFreeRoomCoordinates(m)
   infer d <- initialPositionModel(blocks) particles 1000
-  loop d {
+  var acc = {
+    d = d,
+    speed = tsv(0, Uniform(0.0, maxSpeed))
+  }
+  loop acc {
+    write acc.d to posEst
     sdelay period
     read frontLeft to flEst
     read frontRight to frEst
@@ -425,9 +457,13 @@ template positionEstimate(period : Int) {
     read left to lEst
     read right to rEst
     read speed to speedEst
-    infer d <- positionModel(m, d, flEst, frEst, rlEst, rrEst, lEst, rEst, speedEst)
+    read steeringAngle to saObs
+    cond acc if gtInt(|speedEst|, 0) {
+      acc.speed = maxDistFloatTsv(speedEst)
+    } else {}
+    infer d <- positionModel(m, acc.d, flEst, frEst, rlEst, rrEst, lEst, rEst, acc.speed, saObs)
       budget posBudget
-    write d to posEst
+    acc.d = d
   }
 }
 
@@ -530,7 +566,7 @@ template brakeEstimate(period : Int, safetyMargin : Int) {
     } else {}
     nanosUntilBrake = nanosUntilBrake - intToFloat(period)
     cond nanosUntilBrake if nanosUntilBrake < intToFloat(safetyMargin) {
-      write 0.0 to brake
+      //write 0.0 to brake
       nanosUntilBrake = 0.0
     } else {}
     sdelay period
