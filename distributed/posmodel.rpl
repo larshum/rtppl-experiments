@@ -154,8 +154,9 @@ model speedModel(speedObs : [TSV(Float)]) : Float {
     var mps = rpm * wheelCircumference / 60.0
     observe mps ~ Gaussian(m * ts + b, sigma)
   }
-  // NOTE(larshum, 2023-05-15): We seek the value of the function f(t) at t = 0
-  // (the logically local time).
+
+  // We seek the value at the current logically local time, which is the value
+  // of f(t) at t = 0.
   return b
 }
 
@@ -379,16 +380,25 @@ model positionModel(m : RoomMap, prior : Dist(Pos), flEst : [TSV(Dist(Float))],
                     frEst : [TSV(Dist(Float))], rlEst : [TSV(Dist(Float))],
                     rrEst : [TSV(Dist(Float))], lEst : [TSV(Dist(Float))],
                     rEst : [TSV(Dist(Float))], speedEst : TSV(Dist(Float)),
-                    saObs : [TSV(Float)]) : Pos {
+                    saObs : [TSV(Float)], period : Int) : Pos {
 
   assume posPrev ~ prior
   assume v ~ value(speedEst)
-  assume mx ~ Gaussian(0.0, 1.0)
-  assume bx ~ Gaussian(posPrev.x, v)
-  assume my ~ Gaussian(0.0, 1.0)
-  assume by ~ Gaussian(posPrev.y, v)
+
+  // NOTE(larshum, 2023-05-17): If the car has not observed any steering, the
+  // direction it is travelling in remains constant.
+  cond bd if absmax(saObs) == 0.0 {
+    bd = posPrev.direction
+  } else {
+    assume bd ~ Gaussian(posPrev.direction, 0.2)
+  }
+
+  // NOTE(larshum, 2023-05-17): We estimate the 'bx' and 'by' variables based
+  // on the speed and direction we're currently travelling in.
+  var distanceTravelled = v * timestampToSeconds(period)
+  assume bx ~ Gaussian(posPrev.x + cos(posPrev.direction) * distanceTravelled, 0.2)
+  assume by ~ Gaussian(posPrev.y + sin(posPrev.direction) * distanceTravelled, 0.2)
   assume md ~ Gaussian(0.0, 1.0)
-  assume bd ~ Gaussian(posPrev.direction, pi / 8.0)
   assume sigma ~ Gamma(1.0, 1.0)
 
   var sensorData : [SensorData] = [
@@ -403,7 +413,10 @@ model positionModel(m : RoomMap, prior : Dist(Pos), flEst : [TSV(Dist(Float))],
     var inBounds : Pos -> Bool = withinRoomBounds(m)
     loop for tsv in s.obs {
       var t = timestampToSeconds(timestamp(tsv))
-      var pos = {x = mx * t + bx, y = my * t + by, direction = md * t + bd}
+      var dt = md * t + bd
+      var xt = cos(dt) * t * v + bx
+      var yt = sin(dt) * t * v + by
+      var pos = {x = xt, y = yt, direction = dt}
       var expectedDist = estimateDistance(s.ofs, pos, inBounds)
       assume estDist ~ value(tsv)
       cond if estDist < s.maxRange {
@@ -454,7 +467,8 @@ template positionEstimate(period : Int) {
     cond acc if gtInt(|speedEst|, 0) {
       acc.speed = maxDistFloatTsv(speedEst)
     } else {}
-    infer d <- positionModel(m, acc.d, flEst, frEst, rlEst, rrEst, lEst, rEst, acc.speed, saObs)
+    infer d <- positionModel(m, acc.d, flEst, frEst, rlEst, rrEst, lEst, rEst,
+                             acc.speed, saObs, period)
       budget posBudget
     acc.d = d
   }
