@@ -12,6 +12,10 @@ import sys
 
 import dist
 
+def to_curr_speed(dist):
+    ts, d = dist
+    return (ts, [(w, [v]) for w, [_, v] in d])
+
 def read_opt_floats(f):
     try:
         with open(f, mode="rb") as file:
@@ -38,6 +42,10 @@ def read_pos_dists(f):
 def read_float_dists(f):
     return sorted(dist.read_dists(f, 1), key=lambda x: x[0])
 
+def read_speed_dists(f):
+    speed_lines = sorted(dist.read_dists(f, 2), key=lambda x: x[0])
+    return [to_curr_speed(d) for d in speed_lines]
+
 if len(sys.argv) != 2:
     print("Expected one argument: the room png file")
     sys.exit(1)
@@ -55,7 +63,7 @@ inputs = {
     "rear-right": read_float_dists("rearRight-distEst.txt"),
     "left": read_float_dists("leftSide-distEst.txt"),
     "right": read_float_dists("rightSide-distEst.txt"),
-    "speed": read_float_dists("speedEst-speed.txt")
+    "speed": read_speed_dists("speedEst-speed.txt")
 }
 true_vals = read_opt_floats("true-values.txt")
 
@@ -100,11 +108,11 @@ def plot_dist(axs, dists, ts, max_val, true_val):
 def plot_pos_dist(axs, dists, ts, true_vals):
     ts, samples = choose_closest_after_timestamp(dists, ts)
     data = np.zeros([rows, cols])
-    expected = (0.0, 0.0)
+    expected = (0.0, 0.0, 0.0)
     for w, s in samples:
         x = int(10 * s[0])
         y = int(10 * s[1])
-        expected = (expected[0]+10*s[0]*w, expected[1]+10*s[1]*w)
+        expected = (expected[0]+10*s[0]*w, expected[1]+10*s[1]*w, expected[2]+s[2]*w)
         if x >= 0 and x < cols and y >= 0 and y < rows:
             data[y][x] += 1
     axs.clear()
