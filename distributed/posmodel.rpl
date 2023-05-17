@@ -144,6 +144,7 @@ model speedModel(speedObs : [TSV(Float)]) : Float {
   assume m ~ Gaussian(0.0, maxAcceleration)
   assume b ~ Uniform(0.0, maxSpeed)
   assume sigma ~ Gamma(1.0, 1.0)
+
   // NOTE(larshum, 2023-05-15): We use Bayesian linear regression to estimate
   // the solution to the function f(t) = m * t + b, where t is the timestamp in
   // seconds. We use our prior estimation as our initial value.
@@ -270,7 +271,7 @@ model frontRearDistanceModel(distanceObs : [TSV(Float)],
   // sensor.
   var res = 0.0
   cond res if allOutOfRange(distanceObs, maxSensorRange) {
-    assume res ~ Uniform(maxSensorRange, maxDistance)
+    res = maxSensorRange
   } else {
     assume v ~ value(speedEst)
     assume m ~ Gaussian(0.0, v)
@@ -322,7 +323,7 @@ model sideDistanceModel(distObs : [TSV(Float)], maxSensorRange : Float,
                         maxDistance : Float) : Float {
   var res = 0.0
   cond res if allOutOfRange(distObs, maxSensorRange) {
-    assume res ~ Uniform(maxSensorRange, maxDistance)
+    res = maxSensorRange
   } else {
     res = medianOfLastThreeFloatTsv(distObs)
   }
@@ -361,7 +362,7 @@ model initialPositionModel(blocks : [Coordinate]) : Pos {
 
 // The position denotes our belief of the center of the car.
 def estimateDistance(ofs : Offset, p : Pos, inBounds : Pos -> Bool) : Float {
-  var eps : Float = 0.05
+  var eps = 0.01
   p = positionAtOffset(p, ofs)
   var acc : {d : Float, p : Pos} = {d = 0.0, p = p}
   loop acc while inBounds(acc.p) {
@@ -374,18 +375,6 @@ def estimateDistance(ofs : Offset, p : Pos, inBounds : Pos -> Bool) : Float {
   return acc.d
 }
 
-model observeSensor(m : RoomMap, pos : Pos, s : SensorData) : Unit {
-  var inBounds : Pos -> Bool = withinRoomBounds(m)
-  var expectedDist : Float = estimateDistance(s.ofs, pos, inBounds)
-  loop for tsv in s.obs {
-    var sigma : Float = timeRelativeSigma(timestamp(tsv)) / 10.0
-    assume estDist ~ value(tsv)
-    cond if estDist < s.maxRange {
-      observe estDist ~ Gaussian(expectedDist, sigma)
-    } else {}
-  }
-}
-
 model positionModel(m : RoomMap, prior : Dist(Pos), flEst : [TSV(Dist(Float))],
                     frEst : [TSV(Dist(Float))], rlEst : [TSV(Dist(Float))],
                     rrEst : [TSV(Dist(Float))], lEst : [TSV(Dist(Float))],
@@ -396,13 +385,11 @@ model positionModel(m : RoomMap, prior : Dist(Pos), flEst : [TSV(Dist(Float))],
   assume v ~ value(speedEst)
   assume mx ~ Gaussian(0.0, 1.0)
   assume bx ~ Gaussian(posPrev.x, v)
-  assume sigmax ~ Gamma(1.0, 1.0)
   assume my ~ Gaussian(0.0, 1.0)
   assume by ~ Gaussian(posPrev.y, v)
-  assume sigmay ~ Gamma(1.0, 1.0)
   assume md ~ Gaussian(0.0, 1.0)
   assume bd ~ Gaussian(posPrev.direction, pi / 8.0)
-  assume sigmad ~ Gamma(1.0, 1.0)
+  assume sigma ~ Gamma(1.0, 1.0)
 
   var sensorData : [SensorData] = [
     { ofs = frontLeftOffset, obs = flEst, maxRange = usMaxRange },
@@ -420,12 +407,19 @@ model positionModel(m : RoomMap, prior : Dist(Pos), flEst : [TSV(Dist(Float))],
       var expectedDist = estimateDistance(s.ofs, pos, inBounds)
       assume estDist ~ value(tsv)
       cond if estDist < s.maxRange {
-        observe estDist ~ Gaussian(expectedDist, 0.01)
-      } else {}
+        observe estDist ~ Gaussian(expectedDist, sigma)
+      } else {
+        observe expectedDist ~ Uniform(s.maxRange, 10.0)
+      }
     }
   }
+
   // NOTE(larshum, 2023-05-16): Return the position at t=0.
-  return { x = bx, y = by, direction = bd }
+  var pos = {x = bx, y = by, direction = bd}
+  cond if not(carWithinRoomBounds(m, pos)) {
+    degenerate
+  } else {}
+  return pos
 }
 
 template positionEstimate(period : Int) {
@@ -444,7 +438,7 @@ template positionEstimate(period : Int) {
   infer d <- initialPositionModel(blocks) particles 1000
   var acc = {
     d = d,
-    speed = tsv(0, Uniform(0.0, maxSpeed))
+    speed = tsv(0, Uniform(0.0, 0.1))
   }
   loop acc {
     write acc.d to posEst
