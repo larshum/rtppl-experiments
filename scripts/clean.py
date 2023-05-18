@@ -1,6 +1,7 @@
 # Script for removing all generated files based on the contents of the
 # generated network description file.
 
+import argparse
 import os
 import sys
 
@@ -11,31 +12,52 @@ def try_remove(f):
         os.remove(f)
     except FileNotFoundError:
         pass
+
+def try_clear(f):
     try:
-        os.remove(f"{f}.txt")
+        with open(f, "w"):
+            pass
     except FileNotFoundError:
         pass
 
-path = sys.argv[1]
+p = argparse.ArgumentParser()
+p.add_argument("-p", "--path", action="store", required=True)
+p.add_argument("-a", action="store_true")
+args = p.parse_args()
+
+path = args.path
 os.chdir(path)
 nwfile = f"network.json"
 data = network.read_network(nwfile)
 
-for src, dsts in data["sensor_outs"].items():
-    try_remove(f"sensor-{src}")
+# If the '-a' flag, we remove all files. Otherwise, we simply clear applicable
+# files of contents.
+if args.a:
+    clear = try_remove
+else:
+    clear = try_clear
+
+for _, dsts in data["sensor_outs"].items():
     for dst in dsts:
-        try_remove(f"{dst}")
+        clear(f"{dst}")
 for src, dsts in data["relays"].items():
-    try_remove(f"{src}")
+    clear(f"{src}")
     for dst in dsts:
-        try_remove(f"{dst}")
-for task in data["tasks"]:
-    try_remove(f"{task}")
-    try_remove(f"{task}.mc")
-for dst, srcs in data["actuator_ins"].items():
-    try_remove(f"actuator-{dst}")
+        clear(f"{dst}")
+for _, srcs in data["actuator_ins"].items():
     for src in srcs:
-        try_remove(f"{src}")
-try_remove(nwfile)
-try_remove("sa.txt")
-try_remove("true-values.txt")
+        clear(f"{src}")
+
+# These files should be removed when the '-a' flag is set, but otherwise we
+# don't touch them.
+if args.a:
+    for src, _ in data["sensor_outs"].items():
+        clear(f"{src}")
+    for task in data["tasks"]:
+        clear(f"{task}")
+        clear(f"{task}.mc")
+    for dst, _ in data["actuator_ins"].items():
+        clear(f"{dst}")
+    clear(nwfile)
+    clear("sa.txt")
+    clear("true-values.txt")
