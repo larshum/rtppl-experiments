@@ -1,3 +1,4 @@
+#include <memory>
 #include <mutex>
 #include <queue>
 #include <thread>
@@ -8,13 +9,10 @@
 #include <string.h>
 #include <unistd.h>
 
-struct payload {
-  char* data;
-  int64_t sz;
-};
+typedef std::vector<char> payload;
 
-std::queue<payload> buffer;
-std::mutex mtx;
+std::vector<std::vector<payload>> buffers;
+std::vector<std::unique_ptr<std::mutex>> mtx;
 
 int in = -1;
 std::vector<int> out_fds;
@@ -71,86 +69,76 @@ int64_t read_size() {
 
 void read_task() {
   while (true) {
-    payload p;
-    p.sz = read_size();
-    p.data = (char*)malloc(p.sz);
+    payload p(read_size());
     int64_t tot = 0;
-    while (tot < p.sz) {
-      int count = read(in, (void*)&p.data[tot], p.sz-tot);
+    while (tot < p.size()) {
+      int count = read(in, (void*)&p[tot], p.size()-tot);
       if (count == 0) exit_eof();
       if (count < 0) fail_read(__LINE__);
       tot += count;
     }
-    mtx.lock();
-    buffer.push(p);
-    mtx.unlock();
+    for (size_t i = 0; i < buffers.size(); i++) {
+      mtx[i]->lock();
+      buffers[i].push_back(p);
+      mtx[i]->unlock();
+    }
   }
 }
 
 void write_fd(const payload& p, size_t idx) {
   int out = out_fds[idx];
   int64_t tot = 0;
-  while (tot < p.sz) {
-    int count = write(out, (void*)&p.data[tot], p.sz-tot);
+  while (tot < p.size()) {
+    int count = write(out, (void*)&p[tot], p.size()-tot);
     if (count == 0) exit_eof();
     if (count < 0) fail_write(__LINE__);
     tot += count;
   }
 }
 
-void write_combined(const payload& p) {
-  for (int i = 0; i < out_fds.size(); i++) {
-    write_fd(p, i);
-  }
-}
-
 payload combine_payloads(const std::vector<payload>& pls) {
-  payload combined;
-  combined.sz = 0;
+  int64_t combined_sz = 0;
   for (const payload& p : pls) {
-    combined.sz += p.sz + sizeof(int64_t);
+    combined_sz += p.size() + sizeof(int64_t);
   }
-  combined.data = (char*)malloc(combined.sz);
+  payload combined(combined_sz);
   size_t pos = 0;
   for (const payload& p : pls) {
-    memcpy(&combined.data[pos], (void*)&p.sz, sizeof(int64_t));
+    int64_t sz = p.size();
+    memcpy(&combined[pos], (void*)&sz, sizeof(int64_t));
     pos += sizeof(int64_t);
-    memcpy(&combined.data[pos], p.data, p.sz);
-    pos += p.sz;
-    free(p.data);
+    memcpy(&combined[pos], &p[0], p.size());
+    pos += p.size();
   }
   return combined;
 }
 
-void write_task() {
+std::vector<payload> read_buffer(int i) {
+    mtx[i]->lock();
+    std::vector<payload> pls(buffers[i].begin(), buffers[i].end());
+    buffers[i].clear();
+    mtx[i]->unlock();
+    return pls;
+}
+
+void write_task(int i) {
   while (true) {
-    if (buffer.empty()) {
+    while (buffers[i].empty()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
       std::this_thread::yield();
-      continue;
     }
-    std::vector<payload> pls;
-    mtx.lock();
-    while (!buffer.empty()) {
-      pls.emplace_back(buffer.front());
-      buffer.pop();
-    }
-    mtx.unlock();
+    std::vector<payload> pls = read_buffer(i);
     const payload& p = combine_payloads(pls);
-    write_combined(p);
-    free(p.data);
+    write_fd(p, i);
   }
 }
 
 void notify_termination(int sig) {
-  std::vector<payload> pls;
-  while (!buffer.empty()) {
-    pls.emplace_back(buffer.front());
-    buffer.pop();
-  }
+  int i = out_fds.size()-1;
+  std::vector<payload> pls = read_buffer(i);
   if (!pls.empty()) {
     const payload &p = combine_payloads(pls);
     write_fd(p, out_fds.size()-1);
-    free(p.data);
   }
   close_fds();
   exit(0);
@@ -181,9 +169,15 @@ int main(int argc, char **argv) {
   out_fds.push_back(out);
   signal(SIGINT, notify_termination);
   signal(SIGKILL, emergency_stop);
-  std::thread reader(read_task);
-  reader.detach();
-  write_task();
+
+  mtx.resize(out_fds.size());
+  buffers.resize(out_fds.size());
+  for (size_t i = 0; i < out_fds.size(); i++) {
+    mtx[i] = std::make_unique<std::mutex>();
+    std::thread t(write_task, i);
+    t.detach();
+  }
+  read_task();
   close_fds();
   return 0;
 }
