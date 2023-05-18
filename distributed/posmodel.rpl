@@ -400,23 +400,13 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float
   assume speedLine ~ value(speedEst)
   var speedFn : Int -> Float = f(tsv(timestamp(speedEst), speedLine))
 
-  // NOTE(larshum, 2023-05-17): If the car has not observed any steering, the
-  // direction it is travelling in remains constant.
-  var steerMin = minValue(saObs)
-  var steerMax = maxValue(saObs)
-  cond bd if steerMin == steerMax {
-    bd = posPrev.direction
-  } else {
-    assume bd ~ Gaussian(posPrev.direction, 0.1)
-  }
-
   // NOTE(larshum, 2023-05-17): We estimate the 'bx' and 'by' variables based
   // on the speed line estimation and direction we're currently travelling in.
   var dist = areaUnderLine(speedFn, timestamp(prior), 0)
-  assume bx ~ Gaussian(posPrev.x + dist * cos(posPrev.direction), 0.2)
-  assume by ~ Gaussian(posPrev.y + dist * sin(posPrev.direction), 0.2)
-  assume md ~ Gaussian(0.0, 1.0)
-  assume sigma ~ Gamma(1.0, 1.0)
+  assume bd ~ Gaussian(posPrev.direction, 0.2)
+  assume bx ~ Gaussian(posPrev.x + dist * cos(bd), 0.25)
+  assume by ~ Gaussian(posPrev.y + dist * sin(bd), 0.25)
+  assume sigma ~ Gamma(0.5, 1.0)
 
   var sensorData : [SensorData] = [
     { ofs = frontLeftOffset, obs = flEst, maxRange = usMaxRange },
@@ -429,18 +419,16 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float
   loop for s in sensorData {
     var inBounds : Pos -> Bool = withinRoomBounds(m)
     loop for tsv in s.obs {
-      var distTravelled = areaUnderLine(speedFn, timestamp(prior), timestamp(tsv))
-      var dt = md * timestampToSeconds(timestamp(tsv)) + bd
-      var xt = bx + distTravelled * cos(dt)
-      var yt = by + distTravelled * sin(dt)
-      var pos = {x = xt, y = yt, direction = dt}
+      var distTravelled = areaUnderLine(speedFn, timestamp(tsv), 0)
+      var xt = bx - distTravelled * cos(bd)
+      var yt = by - distTravelled * sin(bd)
+      var pos = {x = xt, y = yt, direction = bd}
       var expectedDist = estimateDistance(s.ofs, pos, inBounds)
+      cond expectedDist if expectedDist > s.maxRange {
+        expectedDist = s.maxRange
+      } else {}
       assume estDist ~ value(tsv)
-      cond if estDist < s.maxRange {
-        observe estDist ~ Gaussian(expectedDist, sigma)
-      } else {
-        observe expectedDist ~ Uniform(s.maxRange, 10.0)
-      }
+      observe estDist ~ Gaussian(expectedDist, sigma)
     }
   }
 
