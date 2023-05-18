@@ -411,10 +411,10 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float
 
   // NOTE(larshum, 2023-05-17): We estimate the 'bx' and 'by' variables based
   // on the speed line estimation and direction we're currently travelling in.
-  var dist = areaUnderLine(speedFn, timestamp(prior), 0)
-  assume bd ~ Gaussian(posPrev.direction, 0.2)
-  assume bx ~ Gaussian(posPrev.x + dist * cos(bd), 0.25)
-  assume by ~ Gaussian(posPrev.y + dist * sin(bd), 0.25)
+  var v = speedFn(timestamp(prior))
+  assume d ~ Gaussian(posPrev.direction, pi / 8.0)
+  assume bx ~ Gaussian(posPrev.x, 0.1)
+  assume by ~ Gaussian(posPrev.y, 0.1)
   assume sigma ~ Gamma(0.5, 1.0)
 
   var sensorData : [SensorData] = [
@@ -428,10 +428,10 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float
   loop for s in sensorData {
     var inBounds : Pos -> Bool = withinRoomBounds(m)
     loop for tsv in s.obs {
-      var distTravelled = areaUnderLine(speedFn, timestamp(tsv), 0)
-      var xt = bx - distTravelled * cos(bd)
-      var yt = by - distTravelled * sin(bd)
-      var pos = {x = xt, y = yt, direction = bd}
+      var distTravelled = areaUnderLine(speedFn, timestamp(prior), timestamp(tsv))
+      var xt = bx + distTravelled * cos(d)
+      var yt = by + distTravelled * sin(d)
+      var pos = {x = xt, y = yt, direction = d}
       var expectedDist = estimateDistance(s.ofs, pos, inBounds)
       cond expectedDist if expectedDist > s.maxRange {
         expectedDist = s.maxRange
@@ -442,7 +442,8 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float
   }
 
   // NOTE(larshum, 2023-05-16): Return the position at t=0.
-  var pos = {x = bx, y = by, direction = bd}
+  var dist = areaUnderLine(speedFn, timestamp(prior), 0)
+  var pos = {x = bx + dist * cos(d), y = by + dist * sin(d), direction = d}
   cond if not(carWithinRoomBounds(m, pos)) {
     degenerate
   } else {}
@@ -606,7 +607,7 @@ network {
   task leftSide = sideDistance(500ms)
   task rightSide = sideDistance(500ms)
   task pos = positionEstimate(1s)
-  task brake = brakeEstimate(500ms, 0.1)
+  task brake = brakeEstimate(250ms, 0.1)
 
   // Speed estimation inputs
   speedLeft -> speedEst.lspeed
