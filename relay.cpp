@@ -1,3 +1,4 @@
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <queue>
@@ -57,7 +58,13 @@ int64_t read_size() {
   int64_t tot = 0;
   while (tot < sizeof(int64_t)) {
     int count = read(in, (void*)&buf[tot], sizeof(int64_t));
-    if (count == 0) exit_eof();
+    if (count == 0) {
+      if (tot > 0) {
+        fprintf(stderr, "[%s] Got EOF after partially reading the size\n", id.c_str());
+        exit(1);
+      }
+      return 0;
+    }
     if (count < 0) fail_read(__LINE__);
     tot += count;
   }
@@ -70,11 +77,18 @@ int64_t read_size() {
 void read_task() {
   while (true) {
     payload p(read_size());
+    if (p.size() == 0) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      continue;
+    }
     int64_t tot = 0;
     while (tot < p.size()) {
       int count = read(in, (void*)&p[tot], p.size()-tot);
-      if (count == 0) exit_eof();
-      if (count < 0) fail_read(__LINE__);
+      if (count == 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      } else if (count < 0) {
+        fail_read(__LINE__);
+      }
       tot += count;
     }
     for (size_t i = 0; i < buffers.size(); i++) {
@@ -159,14 +173,6 @@ int main(int argc, char **argv) {
     if (out == -1) fail_open(dst);
     out_fds.push_back(out);
   }
-  // Also write to an appropriately named file for reproducibility.
-  std::string target = id + ".txt";
-  if (access(target.c_str(), F_OK) == 0) {
-    unlink(target.c_str());
-  }
-  int out = open(target.c_str(), O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
-  if (out == -1) fail_open(target.c_str());
-  out_fds.push_back(out);
   signal(SIGINT, notify_termination);
   signal(SIGKILL, emergency_stop);
 
