@@ -309,23 +309,19 @@ template frontRearDistance(period : Int) {
   output distEst : Dist(Float)
   var maxDistance = 10.0
   infer initSpeed <- speedModel([]) particles 1000
-  var acc = {
-    speed = tsv(0, initSpeed),
-    d = Uniform(0.0, maxDistance)
-  }
-  loop acc {
+  var lastSpeed = tsv(0, initSpeed)
+  loop lastSpeed {
     sdelay period
     read distObs to obs
     read steeringAngleObs to saObs
     read speedEst to speed
-    acc.speed = maxDistLineTimestamp(acc.speed, speed)
-    cond acc if minValue(saObs) == maxValue(saObs) || geqInt(|obs|, 3) {
+    lastSpeed = maxDistLineTimestamp(lastSpeed, speed)
+    cond if minValue(saObs) == maxValue(saObs) || geqInt(|obs|, 3) {
       var obs = sort(cmpFloatTimestamp, obs)
-      infer d <- frontRearDistanceModel(obs, saObs, acc.speed, maxDistance, usMaxRange)
+      infer d <- frontRearDistanceModel(obs, saObs, lastSpeed, maxDistance, usMaxRange)
         particles 1000
-      acc.d = d
+      write d to distEst
     } else {}
-    write acc.d to distEst
   }
 }
 
@@ -344,7 +340,6 @@ template sideDistance(period : Int) {
   input distObs : Float
   output distEst : Dist(Float)
   var maxDistance = 10.0
-  var d = Uniform(0.0, maxDistance)
   loop {
     sdelay period
     read distObs to obs
