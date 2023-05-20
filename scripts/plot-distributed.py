@@ -3,6 +3,7 @@ from datetime import datetime
 from matplotlib.widgets import Slider, RadioButtons
 import numpy as np
 import matplotlib.pyplot as plt
+import argparse
 import bisect
 import math
 import os
@@ -46,14 +47,17 @@ def read_speed_dists(f):
     speed_lines = sorted(dist.read_dists(f, 2), key=lambda x: x[0])
     return [to_curr_speed(d) for d in speed_lines]
 
-if len(sys.argv) != 2:
-    print("Expected one argument: the room png file")
-    sys.exit(1)
-roomFile = sys.argv[1]
+p = argparse.ArgumentParser()
+p.add_argument("-m", "--map", action="store", required=True)
+p.add_argument("-p", "--path", action="store", required=True)
+args = p.parse_args()
+
+roomFile = args.map
 im = Image.open(roomFile)
 rows = im.height
 cols = im.width
-os.chdir("distributed")
+
+os.chdir(args.path)
 
 inputs = {
     "pos": read_pos_dists("pos-posEst"),
@@ -80,7 +84,7 @@ ts_slider = Slider(
     valmax=(last_ts-fst_ts)/1e9,
     valinit=0
 )
-rax = fig.add_axes([0.75, 0.8, 0.15, 0.15])
+rax = fig.add_axes([0.85, 0.8, 0.15, 0.15])
 dist_buttons = RadioButtons (
     rax,
     ("front-left", "front-right", "rear-left", "rear-right", "left", "right", "speed"),
