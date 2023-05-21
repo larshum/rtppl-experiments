@@ -31,11 +31,16 @@ else:
     write_fn = lambda ts, v: write_tsv(out, ts, v)
 
 ofs = 0
+last_ts = 0
 while ofs < len(data):
+    if last_ts > 0:
+        time.sleep((ts - last_ts) / 1e9)
+        last_ts = ts
+    else:
+        time.sleep(0.1)
     _, ts, v = struct.unpack("=qqd", data[ofs:ofs+24])
     write_fn(ts, v)
     ofs += 24
-    time.sleep(0.1)
 print("End of observations")
 
 if len(sys.argv) >= 3:
