@@ -303,6 +303,15 @@ model frontRearDistanceModel(distanceObs : [TSV(Float)],
   return res
 }
 
+def takeThreeMostRecent(a : [TSV(Float)]) : [TSV(Float)] {
+  var n = |a|
+  a = sort(cmpFloatTimestamp, a)
+  cond a if geqInt(n, 3) {
+    a = [a[subInt(n, 3)], a[subInt(n, 2)], a[subInt(n, 1)]]
+  } else {}
+  return a
+}
+
 template frontRearDistance(period : Int) {
   input distObs : Float
   input steeringAngleObs : Float
@@ -315,10 +324,12 @@ template frontRearDistance(period : Int) {
     read distObs to obs
     read steeringAngleObs to saObs
     read speedEst to speed
+    cond lastObs if gtInt(|obs|, 0) {
+      lastObs = takeThreeMostRecent(concat(lastObs, obs))
+    } else {}
     lastSpeed = maxDistLineTimestamp(lastSpeed, speed)
-    cond if minValue(saObs) == maxValue(saObs) || geqInt(|obs|, 3) {
-      var obs = sort(cmpFloatTimestamp, obs)
-      infer d <- frontRearDistanceModel(obs, saObs, lastSpeed, usMaxRange)
+    cond if minValue(saObs) == maxValue(saObs) || geqInt(|lastObs|, 3) {
+      infer d <- frontRearDistanceModel(lastObs, saObs, lastSpeed, usMaxRange)
         particles 1000
       write d to distEst
     } else {}
@@ -333,15 +344,6 @@ model sideDistanceModel(distObs : [TSV(Float)], maxSensorRange : Float) : Float 
     res = medianOfLastThreeFloatTsv(distObs)
   }
   return res
-}
-
-def takeThreeMostRecent(a : [TSV(Float)]) : [TSV(Float)] {
-  var n = |a|
-  a = sort(cmpFloatTimestamp, a)
-  cond a if geqInt(n, 3) {
-    a = [a[subInt(n, 3)], a[subInt(n, 2)], a[subInt(n, 1)]]
-  } else {}
-  return a
 }
 
 template sideDistance(period : Int) {
