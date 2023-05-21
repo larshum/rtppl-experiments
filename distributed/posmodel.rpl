@@ -17,6 +17,7 @@ const maxSpeed : Float = 0.5
 const wheelCircumference : Float = 0.35
 const usMaxRange : Float = 4.0
 const tofMaxRange : Float = 2.0
+const maxDistance : Float = 10.0
 
 const zeroOffset : Offset = { angle = 0.0, distance = 0.0, direction = 0.0 }
 const frontLeftOffset : Offset = {
@@ -276,7 +277,7 @@ def allOutOfRange(distanceObs : [TSV(Float)], maxRange : Float) : Bool {
 
 model frontRearDistanceModel(distanceObs : [TSV(Float)],
                              saObs : [TSV(Float)], speedEst : TSV(Dist(Line)),
-                             maxDistance : Float, maxSensorRange : Float) : Float {
+                             maxSensorRange : Float) : Float {
   // NOTE(larshum, 2023-05-16): If all distance observations are outside of the
   // range, the true distance can be anywhere beyond the maximum range of the
   // sensor.
@@ -307,7 +308,6 @@ template frontRearDistance(period : Int) {
   input steeringAngleObs : Float
   input speedEst : Dist(Line)
   output distEst : Dist(Float)
-  var maxDistance = 10.0
   infer initSpeed <- speedModel([]) particles 1000
   var lastSpeed = tsv(0, initSpeed)
   loop lastSpeed {
@@ -318,15 +318,14 @@ template frontRearDistance(period : Int) {
     lastSpeed = maxDistLineTimestamp(lastSpeed, speed)
     cond if minValue(saObs) == maxValue(saObs) || geqInt(|obs|, 3) {
       var obs = sort(cmpFloatTimestamp, obs)
-      infer d <- frontRearDistanceModel(obs, saObs, lastSpeed, maxDistance, usMaxRange)
+      infer d <- frontRearDistanceModel(obs, saObs, lastSpeed, usMaxRange)
         particles 1000
       write d to distEst
     } else {}
   }
 }
 
-model sideDistanceModel(distObs : [TSV(Float)], maxSensorRange : Float,
-                        maxDistance : Float) : Float {
+model sideDistanceModel(distObs : [TSV(Float)], maxSensorRange : Float) : Float {
   var res = 0.0
   cond res if allOutOfRange(distObs, maxSensorRange) {
     res = maxSensorRange
@@ -336,16 +335,27 @@ model sideDistanceModel(distObs : [TSV(Float)], maxSensorRange : Float,
   return res
 }
 
+def takeThreeMostRecent(a : [TSV(Float)]) : [TSV(Float)] {
+  var n = |a|
+  a = sort(cmpFloatTimestamp, a)
+  cond a if geqInt(n, 3) {
+    a = [a[subInt(n, 3)], a[subInt(n, 2)], a[subInt(n, 1)]]
+  } else {}
+  return a
+}
+
 template sideDistance(period : Int) {
   input distObs : Float
   output distEst : Dist(Float)
-  var maxDistance = 10.0
-  loop {
+  var lastObs = []
+  loop lastObs {
     sdelay period
     read distObs to obs
-    cond if geqInt(|obs|, 3) {
-      var obs = sort(cmpFloatTimestamp, obs)
-      infer d <- sideDistanceModel(obs, tofMaxRange, maxDistance) particles 1000
+    cond lastObs if gtInt(|obs|, 0) {
+      lastObs = takeThreeMostRecent(concat(lastObs, obs))
+    } else {}
+    cond if geqInt(|lastObs|, 3) {
+      infer d <- sideDistanceModel(lastObs, tofMaxRange) particles 1000
       write d to distEst
     } else {}
   }
