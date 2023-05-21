@@ -38,12 +38,22 @@ if not os.path.isfile("relay"):
 p = argparse.ArgumentParser()
 p.add_argument("-p", "--path", action="store", required=True)
 p.add_argument("-m", "--map", action="store", required=True)
+p.add_argument("-r", "--replay", action="store")
 args = p.parse_args()
 
 map_file = args.map
 path = args.path
+
+nw = network.read_network(f"{path}/network.json")
+if args.replay:
+    subprocess.run(["python3", "scripts/clean.py", "-p", path])
+    for _, dsts in nw["sensor_outs"].items():
+        for dst in dsts:
+            cmd = ["python3", "scripts/writer.py", f"{args.replay}/{dst}", f"{path}/{dst}"]
+            print(cmd)
+            procs.append(subprocess.Popen(cmd))
+
 os.chdir(path)
-nw = network.read_network("network.json")
 for src, dsts in nw["sensor_outs"].items():
     pass
 for src, dsts in nw["relays"].items():
