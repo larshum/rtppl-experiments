@@ -14,7 +14,7 @@ type SensorData = { ofs : Offset, obs : [TSV(Dist(Float))], maxRange : Float }
 
 const roomBlockWidth : Float = 0.1
 const maxSpeed : Float = 0.5
-const wheelCircumference : Float = 0.35
+const wheelCircumference : Float = 0.33
 const usMaxRange : Float = 4.0
 const tofMaxRange : Float = 2.0
 const maxDistance : Float = 10.0
@@ -132,40 +132,62 @@ def timestampToSeconds(ts : Int) : Float {
   return intToFloat(ts) / intToFloat(1s)
 }
 
-// Estimate the current speed of the car through the given observed speeds,
-// using Bayesian linear regression. The current implementation does not make
-// use of our prior knowledge of the speed.
-model speedModel(speedObs : [TSV(Float)]) : Line {
-  assume m ~ Gaussian(0.0, 0.1)
-  assume b ~ Uniform(0.0, maxSpeed)
-  assume sigma ~ Gamma(1.0, 1.0)
-
-  // NOTE(larshum, 2023-05-15): We use Bayesian linear regression to estimate
-  // the solution to the function f(t) = m * t + b, where t is the timestamp in
-  // seconds. We use our prior estimation as our initial value.
+model observeSpeeds(speedObs : [TSV(Float)], line : Line, sigma : Float) : Unit {
   loop for tsv in speedObs {
     var ts = timestampToSeconds(timestamp(tsv))
     var rpm = value(tsv)
     var mps = rpm * wheelCircumference / 60.0
-    observe mps ~ Gaussian(m * ts + b, sigma)
+    observe mps ~ Gaussian(line.slope * ts + line.intercept, sigma)
   }
+}
 
-  return {slope = m, intercept = b}
+model initialSpeedModel(speedObs : [TSV(Float)]) : Line {
+  assume m ~ Gaussian(0.0, 0.1)
+  assume b ~ Uniform(0.0, maxSpeed)
+  assume sigma ~ Gamma(1.0, 1.0)
+  var line = {slope = m, intercept = b}
+  observeSpeeds(speedObs, line, sigma)
+  return line
+}
+
+// Estimate the current speed of the car through the given observed speeds,
+// using Bayesian linear regression. The current implementation does not make
+// use of our prior knowledge of the speed.
+model speedModel(prior : TSV(Dist(Line)), speedObs : [TSV(Float)]) : Line {
+  assume m ~ Gaussian(0.0, 0.1)
+  assume b ~ Uniform(0.0, maxSpeed)
+  assume sigma ~ Gamma(1.0, 1.0)
+  var line = {slope = m, intercept = b}
+
+  // NOTE(larshum, 2023-05-15): We use Bayesian linear regression to estimate
+  // the solution to the function f(t) = m * t + b, where t is the timestamp in
+  // seconds. We use our prior estimation as our initial value.
+  assume prevLine ~ value(prior)
+  var ts = timestampToSeconds(timestamp(prior))
+  observe prevLine.intercept ~ Gaussian(line.slope * ts + line.intercept, sigma)
+  observeSpeeds(speedObs, line, sigma)
+
+  return line
 }
 
 template speedEst(period : Int) {
   input lspeed : Float
   input rspeed : Float
   output speed : Dist(Line)
-  loop {
+  infer initSpeed <- initialSpeedModel([]) particles 1000
+  var acc : TSV(Dist(Line)) = tsv(0, initSpeed)
+  loop acc {
     sdelay period
     read lspeed to lObs
     read rspeed to rObs
     var obs = concat(lObs, rObs)
-    cond if gtInt(|obs|, 0) {
-      infer d <- speedModel(obs) particles 1000
+    cond d if gtInt(|obs|, 0) {
+      infer d <- speedModel(acc, obs) particles 1000
       write d to speed
-    } else {}
+    } else {
+      d = value(acc)
+    }
+    acc = tsv(0, d)
   }
 }
 
@@ -317,8 +339,9 @@ template frontRearDistance(period : Int) {
   input steeringAngleObs : Float
   input speedEst : Dist(Line)
   output distEst : Dist(Float)
-  infer initSpeed <- speedModel([]) particles 1000
+  infer initSpeed <- initialSpeedModel([]) particles 1000
   var lastSpeed = tsv(0, initSpeed)
+  var lastObs = []
   loop lastSpeed {
     sdelay period
     read distObs to obs
@@ -470,7 +493,7 @@ template positionEstimate(period : Int) {
   var posBudget : Int = subInt(period, 100ms)
   var m : RoomMap = readRoomMap()
   var blocks : [Coordinate] = findFreeRoomCoordinates(m)
-  infer initSpeed <- speedModel([]) particles 1000
+  infer initSpeed <- initialSpeedModel([]) particles 1000
   infer d <- initialPositionModel(blocks) particles 1000
   var acc = {
     speed = tsv(0, initSpeed),
@@ -566,7 +589,7 @@ template brakeEstimate(period : Int, safetyMargin : Float) {
   output brake : Float
   var m : RoomMap = readRoomMap ()
   var blocks : [Coordinate] = findFreeRoomCoordinates(m)
-  infer initSpeed <- speedModel([]) particles 1000
+  infer initSpeed <- initialSpeedModel([]) particles 1000
   infer d <- initialPositionModel(blocks) particles 1000
   var acc = {
     speed = tsv(0, initSpeed),
