@@ -65,7 +65,8 @@ for dst, srcs in nw["actuator_ins"].items():
 for task in nw["tasks"]:
     cmd = [f"./{task}", f"../{map_file}"]
     print(cmd)
-    procs.append(subprocess.Popen(cmd, env={"OCAMLRUNPARAM": "b"}))
+    taskLog = open(f"{task}-logfile.txt", "w+")
+    procs.append(subprocess.Popen(cmd, stdout=taskLog, env={"OCAMLRUNPARAM": "b"}))
 
 while True:
     live = []

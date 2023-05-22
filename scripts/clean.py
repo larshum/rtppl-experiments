@@ -47,6 +47,8 @@ for src, dsts in data["relays"].items():
 for _, srcs in data["actuator_ins"].items():
     for src in srcs:
         clear(f"{src}")
+for task in data["tasks"]:
+    clear(f"{task}-logfile.txt")
 
 # These files should be removed when the '-a' flag is set, but otherwise we
 # don't touch them.

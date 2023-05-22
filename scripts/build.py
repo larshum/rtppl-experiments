@@ -9,7 +9,7 @@ def write_line(f, targets):
 
 path = sys.argv[1]
 os.chdir(path)
-p = subprocess.run(["rtppl", "posmodel.rpl"])
+p = subprocess.run(["rtppl", "posmodel.rpl", "--print-infer-time"])
 if p.returncode != 0:
     print("RTPPL compilation failed")
     exit(1)
