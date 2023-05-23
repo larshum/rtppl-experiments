@@ -1,4 +1,4 @@
-def mulX(period : Int, x : Float) : Unit {
+template mulX(period : Int, x : Float) {
   input inp : Float
   output outp : Float
   loop {
@@ -9,7 +9,7 @@ def mulX(period : Int, x : Float) : Unit {
     sdelay period
   }
 }
-def addX(period : Int, x : Float) : Unit {
+template addX(period : Int, x : Float) {
   input inp : Float
   output outp : Float
   loop {
@@ -20,7 +20,7 @@ def addX(period : Int, x : Float) : Unit {
     sdelay period
   }
 }
-main {
+network {
   sensor s : Float
   actuator a : Float
   task r1 = mulX(200ms, 2.0)
