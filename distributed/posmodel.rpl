@@ -53,6 +53,21 @@ def tan(x : Float) : Float {
   return sin(x) / cos(x)
 }
 
+def degToRad(degAngle : Float) : Float {
+  return degAngle * pi / 180.0
+}
+
+def sgn(x : Float) : Float {
+  cond x if x < 0.0 {
+    x = 0.0 - 1.0
+  } else {
+    cond x if x > 0.0 {
+      x = 1.0
+    } else {}
+  }
+  return x
+}
+
 def readRoomMap() : RoomMap {
   var data : [[Bool]] = readRoomMapRuntimeHelper()
   return {data = data, rows = |data|, cols = |data[0]|}
@@ -332,11 +347,14 @@ model frontRearDistanceModel(distanceObs : [TSV(Float)],
   return res
 }
 
-def takeThreeMostRecent(a : [TSV(Float)]) : [TSV(Float)] {
-  var n = |a|
+def takeNMostRecent(a : [TSV(Float)], n : Int) : [TSV(Float)] {
   a = sort(cmpFloatTimestamp, a)
-  cond a if geqInt(n, 3) {
-    a = [a[subInt(n, 3)], a[subInt(n, 2)], a[subInt(n, 1)]]
+  cond a if gtInt(|a|, n) {
+    var res = []
+    loop res for i in range(0, n) {
+      res = push(res, a[subInt(|a|, subInt(n, i))])
+    }
+    a = res
   } else {}
   return a
 }
@@ -355,7 +373,7 @@ template frontRearDistance(period : Int) {
     read steeringAngleObs to saObs
     read speedEst to speed
     cond lastObs if gtInt(|obs|, 0) {
-      lastObs = takeThreeMostRecent(concat(lastObs, obs))
+      lastObs = takeNMostRecent(concat(lastObs, obs), 10)
     } else {}
     lastSpeed = maxDistLineTimestamp(lastSpeed, speed)
     cond if minValue(saObs) == maxValue(saObs) || geqInt(|lastObs|, 3) {
@@ -384,7 +402,7 @@ template sideDistance(period : Int) {
     sdelay period
     read distObs to obs
     cond lastObs if gtInt(|obs|, 0) {
-      lastObs = takeThreeMostRecent(concat(lastObs, obs))
+      lastObs = takeNMostRecent(concat(lastObs, obs), 3)
     } else {}
     cond if geqInt(|lastObs|, 3) {
       infer d <- sideDistanceModel(lastObs, tofMaxRange) particles 1000
@@ -452,20 +470,46 @@ def f(line : TSV(Line), t : Int) : Float {
   return l.slope * ts + l.intercept
 }
 
+def computePos(p0 : Pos, distanceTravelled : Float, turnRadius : Float, steeringAngle : Float) : Pos {
+  // If the current steering angle is zero, the car is driving in a straight
+  // line. In this case, just update x and y based on the direction it is
+  // travelling in. Otherwise, the car will drive along the arc of a circle, so
+  // we estimate the position it ends up in.
+  cond p1 if steeringAngle == 0.0 {
+    p1 = {
+      x = p0.x + distanceTravelled * cos(p0.direction),
+      y = p0.y + distanceTravelled * sin(p0.direction),
+      direction = p0.direction
+    }
+  } else {
+    var d = p0.direction + distanceTravelled / turnRadius
+    p1 = {
+      x = p0.x + cos(d) * turnRadius,
+      y = p0.y + sin(d) * turnRadius,
+      direction = d
+    }
+  }
+  return p1
+}
+
 model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float))],
                     frEst : [TSV(Dist(Float))], rlEst : [TSV(Dist(Float))],
                     rrEst : [TSV(Dist(Float))], lEst : [TSV(Dist(Float))],
                     rEst : [TSV(Dist(Float))], speedEst : TSV(Dist(Line)),
-                    saObs : [TSV(Float)]) : Pos {
+                    saObs : TSV(Float)) : Pos {
 
   assume posPrev ~ value(prior)
   assume speedLine ~ value(speedEst)
+  assume sigma ~ Gamma(0.5, 1.0)
   var speedFn : Int -> Float = f(tsv(timestamp(speedEst), speedLine))
 
   var v = speedFn(timestamp(prior))
-  // We assume the most recent steering angle is the current angle
-  var steerAngle = value(maxFloatTimestamp(saObs))
-  assume sigma ~ Gamma(0.5, 1.0)
+  // We assume the most recent steering angle is the current steering angle
+  // NOTE(larshum, 2023-05-23): We swap the sign of the steering angle because
+  // the y-axis of the map is inverted (the upper left corner of the PNG is
+  // (0,0)).
+  var sa = 0.0 - degToRad(value(saObs))
+  var turnRadius = wheelbase / tan(sa)
 
   var sensorData : [SensorData] = [
     { ofs = frontLeftOffset, obs = flEst, maxRange = usMaxRange, maxAngle = usMaxAngle },
@@ -479,10 +523,7 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float
     var inBounds : Pos -> Bool = withinRoomBounds(m)
     loop for tsv in s.obs {
       var distTravelled = areaUnderLine(speedFn, timestamp(prior), timestamp(tsv))
-      var d = posPrev.direction + distTravelled * tan(steerAngle) / wheelbase
-      var x = posPrev.x + distTravelled * cos(d)
-      var y = posPrev.y + distTravelled * sin(d)
-      var pos = {x = x, y = y, direction = d}
+      var pos = computePos(posPrev, distTravelled, turnRadius, sa)
       var expectedDist = estimateDistance(s.ofs, s.maxAngle, pos, inBounds)
       cond expectedDist if expectedDist > s.maxRange {
         expectedDist = s.maxRange
@@ -493,10 +534,7 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float
   }
 
   var dist = areaUnderLine(speedFn, timestamp(prior), 0)
-  var d = posPrev.direction + dist * tan(steerAngle) / wheelbase
-  var x = posPrev.x + dist * cos(d)
-  var y = posPrev.y + dist * sin(d)
-  var pos = {x = x, y = y, direction = d}
+  var pos = computePos(posPrev, dist, turnRadius, sa)
   cond if not(carWithinRoomBounds(m, pos)) {
     degenerate
   } else {}
@@ -520,7 +558,8 @@ template positionEstimate(period : Int) {
   infer d <- initialPositionModel(blocks) particles 1000
   var acc = {
     speed = tsv(0, initSpeed),
-    d = tsv(0, d)
+    d = tsv(0, d),
+    sa = tsv(0, 0.0)
   }
   loop acc {
     write value(acc.d) to posEst
@@ -533,9 +572,12 @@ template positionEstimate(period : Int) {
     read right to rEst
     read speed to speedEst
     read steeringAngle to saObs
+    cond acc if gtInt(|saObs|, 0) {
+      acc.sa = maxFloatTimestamp(saObs)
+    } else {}
     acc.speed = maxDistLineTimestamp(acc.speed, speedEst)
     infer d <- positionModel(m, acc.d, flEst, frEst, rlEst, rrEst, lEst, rEst,
-                             acc.speed, saObs)
+                             acc.speed, acc.sa)
       budget posBudget
     acc.d = tsv(0, d)
   }

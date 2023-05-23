@@ -28,7 +28,7 @@ def read_opt_floats(f):
             ts, flDist, frDist, lDist, rDist, rlDist, rrDist, speed, x, y, direction = struct.unpack("=qdddddddddd", content[ofs:ofs+88])
             ofs += 88
             # Convert RPM to m/s
-            speed = speed * 0.35 / 60.0
+            speed = speed * 0.33 / 60.0
             # Apply modulo to the provided direction
             direction = direction % (2*math.pi)
             tsvs.append((ts, [x, y, direction, flDist, frDist, rlDist, rrDist, lDist, rDist, speed]))
