@@ -16,8 +16,11 @@ const roomBlockWidth : Float = 0.1
 const maxSpeed : Float = 0.5
 const wheelCircumference : Float = 0.33
 const usMaxRange : Float = 4.0
-const tofMaxRange : Float = 2.0
+const usMaxAngle : Float = 0.4363323129985824
+const tofMaxRange : Float = 1.25
+const tofMaxAngle : Float = 0.2617993877991494
 const maxDistance : Float = 10.0
+const wheelbase : Float = 0.35
 
 const zeroOffset : Offset = { angle = 0.0, distance = 0.0, direction = 0.0 }
 const frontLeftOffset : Offset = {
@@ -45,6 +48,10 @@ const sensorOffsets : [Offset] = [
 
 const inf : Float = 0.0 / 1.0
 const neginf : Float = 0.0 - inf
+
+def tan(x : Float) : Float {
+  return sin(x) / cos(x)
+}
 
 def readRoomMap() : RoomMap {
   var data : [[Bool]] = readRoomMapRuntimeHelper()
@@ -400,17 +407,33 @@ model initialPositionModel(blocks : [Coordinate]) : Pos {
   return { x = x + xOfs, y = y + yOfs, direction = d }
 }
 
-// The position denotes our belief of the center of the car.
-def estimateDistance(ofs : Offset, p : Pos, inBounds : Pos -> Bool) : Float {
-  var eps = 0.01
-  p = positionAtOffset(p, ofs)
-  var acc : {d : Float, p : Pos} = {d = 0.0, p = p}
-  loop acc while inBounds(acc.p) {
-    var p : Pos = acc.p
-    p.x = p.x + eps * cos(p.direction)
-    p.y = p.y + eps * sin(p.direction)
+// The position denotes our belief of the center of the car. The cone angle
+// represents the cone in which we observe distances - we shoot three
+// particles, one from each side of the cone plus the a beam from the center.
+// The first of these to collide determines our estimated distance.
+def estimateDistance(ofs : Offset, coneAngle : Float, p : Pos,
+                     inBounds : Pos -> Bool) : Float {
+  var eps = 0.1
+  p1 = positionAtOffset(p, ofs)
+  p2 = p1
+  p3 = p1
+  p2.direction = p1.direction + coneAngle
+  p3.direction = p1.direction - coneAngle
+  var acc = {d = 0.0, p1 = p1, p2 = p2, p3 = p3}
+  loop acc while inBounds(acc.p1) && inBounds(acc.p2) && inBounds(acc.p3) {
+    var p1 = acc.p1
+    p1.x = p1.x + eps * cos(p1.direction)
+    p1.y = p1.y + eps * sin(p1.direction)
+    acc.p1 = p1
+    var p2 = acc.p2
+    p2.x = p2.x + eps * cos(p2.direction)
+    p2.y = p2.y + eps * sin(p2.direction)
+    acc.p2 = p2
+    var p3 = acc.p3
+    p3.x = p3.x + eps * cos(p3.direction)
+    p3.y = p3.y + eps * sin(p3.direction)
+    acc.p3 = p3
     acc.d = acc.d + eps
-    acc.p = p
   }
   return acc.d
 }
@@ -439,30 +462,28 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float
   assume speedLine ~ value(speedEst)
   var speedFn : Int -> Float = f(tsv(timestamp(speedEst), speedLine))
 
-  // NOTE(larshum, 2023-05-17): We estimate the 'bx' and 'by' variables based
-  // on the speed line estimation and direction we're currently travelling in.
   var v = speedFn(timestamp(prior))
-  assume d ~ Gaussian(posPrev.direction, pi / 8.0)
-  assume bx ~ Gaussian(posPrev.x, 0.1)
-  assume by ~ Gaussian(posPrev.y, 0.1)
+  // We assume the most recent steering angle is the current angle
+  var steerAngle = value(maxFloatTimestamp(saObs))
   assume sigma ~ Gamma(0.5, 1.0)
 
   var sensorData : [SensorData] = [
-    { ofs = frontLeftOffset, obs = flEst, maxRange = usMaxRange },
-    { ofs = frontRightOffset, obs = frEst, maxRange = usMaxRange },
-    { ofs = rearLeftOffset, obs = rlEst, maxRange = usMaxRange },
-    { ofs = rearRightOffset, obs = rrEst, maxRange = usMaxRange },
-    { ofs = sideLeftOffset, obs = lEst, maxRange = tofMaxRange },
-    { ofs = sideRightOffset, obs = rEst, maxRange = tofMaxRange }
+    { ofs = frontLeftOffset, obs = flEst, maxRange = usMaxRange, maxAngle = usMaxAngle },
+    { ofs = frontRightOffset, obs = frEst, maxRange = usMaxRange, maxAngle = usMaxAngle },
+    { ofs = rearLeftOffset, obs = rlEst, maxRange = usMaxRange, maxAngle = usMaxAngle },
+    { ofs = rearRightOffset, obs = rrEst, maxRange = usMaxRange, maxAngle = usMaxAngle },
+    { ofs = sideLeftOffset, obs = lEst, maxRange = tofMaxRange, maxAngle = tofMaxAngle },
+    { ofs = sideRightOffset, obs = rEst, maxRange = tofMaxRange, maxAngle = tofMaxAngle }
   ]
   loop for s in sensorData {
     var inBounds : Pos -> Bool = withinRoomBounds(m)
     loop for tsv in s.obs {
       var distTravelled = areaUnderLine(speedFn, timestamp(prior), timestamp(tsv))
-      var xt = bx + distTravelled * cos(d)
-      var yt = by + distTravelled * sin(d)
-      var pos = {x = xt, y = yt, direction = d}
-      var expectedDist = estimateDistance(s.ofs, pos, inBounds)
+      var d = posPrev.direction + distTravelled * tan(steerAngle) / wheelbase
+      var x = posPrev.x + distTravelled * cos(d)
+      var y = posPrev.y + distTravelled * sin(d)
+      var pos = {x = x, y = y, direction = d}
+      var expectedDist = estimateDistance(s.ofs, s.maxAngle, pos, inBounds)
       cond expectedDist if expectedDist > s.maxRange {
         expectedDist = s.maxRange
       } else {}
@@ -471,9 +492,11 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float
     }
   }
 
-  // NOTE(larshum, 2023-05-16): Return the position at t=0.
   var dist = areaUnderLine(speedFn, timestamp(prior), 0)
-  var pos = {x = bx + dist * cos(d), y = by + dist * sin(d), direction = d}
+  var d = posPrev.direction + dist * tan(steerAngle) / wheelbase
+  var x = posPrev.x + dist * cos(d)
+  var y = posPrev.y + dist * sin(d)
+  var pos = {x = x, y = y, direction = d}
   cond if not(carWithinRoomBounds(m, pos)) {
     degenerate
   } else {}
@@ -564,7 +587,8 @@ model brakeDistanceModel(m : RoomMap, pos : TSV(Dist(Pos)), speed : TSV(Dist(Lin
   // Compute the distance until the car crashes given that it keeps driving in
   // its current direction.
   var inBounds : Pos -> Bool = carWithinRoomBounds(m)
-  var crashDist = estimateDistance(zeroOffset, currPos, inBounds)
+  // TODO: choose the cone angle with more care here...
+  var crashDist = estimateDistance(zeroOffset, 0.25, currPos, inBounds)
   return crashDist - brakeDist
 }
 
