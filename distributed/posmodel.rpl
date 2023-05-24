@@ -13,8 +13,9 @@ type Offset = { angle : Float, distance : Float, direction : Float }
 type SensorData = { ofs : Offset, obs : [TSV(Dist(Float))], maxRange : Float }
 
 const roomBlockWidth : Float = 0.1
-const maxSpeed : Float = 0.5
 const wheelCircumference : Float = 0.33
+const maxSpeed : Float = 0.1
+const maxSpeedRpm : Float = maxSpeed * 60.0 / wheelCircumference
 const usMaxRange : Float = 4.0
 const usMaxAngle : Float = 0.4363323129985824
 const tofMaxRange : Float = 1.25
@@ -172,6 +173,16 @@ model initialSpeedModel(speedObs : [TSV(Float)]) : Line {
   return line
 }
 
+def allSpeedObsEqual(tsvs : [TSV(Float)]) : Bool {
+  var acc = {b = true, v = value(tsvs[0])}
+  loop acc for tsv in tsvs {
+    cond acc if value(tsv) != acc.v {
+      acc.b = false
+    } else {}
+  }
+  return acc.b
+}
+
 // Estimate the current speed of the car through the given observed speeds,
 // using Bayesian linear regression. The current implementation does not make
 // use of our prior knowledge of the speed.
@@ -181,13 +192,25 @@ model speedModel(prior : TSV(Dist(Line)), speedObs : [TSV(Float)]) : Line {
   assume sigma ~ Gamma(1.0, 1.0)
   var line = {slope = m, intercept = b}
 
-  // NOTE(larshum, 2023-05-15): We use Bayesian linear regression to estimate
-  // the solution to the function f(t) = m * t + b, where t is the timestamp in
-  // seconds. We use our prior estimation as our initial value.
   assume prevLine ~ value(prior)
-  var ts = timestampToSeconds(timestamp(prior))
-  observe prevLine.intercept ~ Gaussian(line.slope * ts + line.intercept, sigma)
-  observeSpeeds(speedObs, line, sigma)
+  cond if allSpeedObsEqual(speedObs) {
+    // NOTE(larshum, 2023-05-24): If all our observations are the same, we know
+    // all observed speeds are in an interval [10*x, 10*x+10). If our estimated
+    // current speed is outside this interval, we mark this particle as
+    // degenerate.
+    var obsRpm = floorToInt(value(speedObs[0]))
+    var currRpm = b * 60.0 / wheelCircumference
+    cond if not(eqInt(mulInt(floorToInt(currRpm / 10.0), 10), obsRpm)) {
+      degenerate
+    } else {}
+  } else {
+    // NOTE(larshum, 2023-05-15): We use Bayesian linear regression to estimate
+    // the solution to the function f(t) = m * t + b, where t is the timestamp in
+    // seconds. We use our prior estimation as our initial value.
+    var ts = timestampToSeconds(timestamp(prior))
+    observe prevLine.intercept ~ Gaussian(line.slope * ts + line.intercept, sigma)
+    observeSpeeds(speedObs, line, sigma)
+  }
 
   return line
 }
