@@ -470,23 +470,32 @@ def f(line : TSV(Line), t : Int) : Float {
   return l.slope * ts + l.intercept
 }
 
-def computePos(p0 : Pos, distanceTravelled : Float, turnRadius : Float, steeringAngle : Float) : Pos {
+def computePos(p0 : Pos, l : Float, r : Float, steeringAngle : Float) : Pos {
   // If the current steering angle is zero, the car is driving in a straight
   // line. In this case, just update x and y based on the direction it is
   // travelling in. Otherwise, the car will drive along the arc of a circle, so
   // we estimate the position it ends up in.
   cond p1 if steeringAngle == 0.0 {
     p1 = {
-      x = p0.x + distanceTravelled * cos(p0.direction),
-      y = p0.y + distanceTravelled * sin(p0.direction),
+      x = p0.x + l * cos(p0.direction),
+      y = p0.y + l * sin(p0.direction),
       direction = p0.direction
     }
   } else {
-    var d = p0.direction + distanceTravelled / turnRadius
-    p1 = {
-      x = p0.x + cos(d) * turnRadius,
-      y = p0.y + sin(d) * turnRadius,
-      direction = d
+    // If steering angle is negative, we are steering counterclockwise.
+    var d = p0.direction
+    cond p1 if steeringAngle < 0.0 {
+      p1 = {
+        x = p0.x + r * (sin(d) - sin(d - l / r)),
+        y = p0.y + r * (cos(d - l / r) - cos(d)),
+        direction = d - l / r
+      }
+    } else {
+      p1 = {
+        x = p0.x + r * (sin(d + l / r) - sin(d)),
+        y = p0.y + r * (cos(d) - cos(d + l / r)),
+        direction = d + l / r
+      }
     }
   }
   return p1
@@ -510,6 +519,9 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float
   // (0,0)).
   var sa = 0.0 - degToRad(value(saObs))
   var turnRadius = wheelbase / tan(sa)
+  cond turnRadius if turnRadius < 0.0 {
+    turnRadius = 0.0 - turnRadius
+  } else {}
 
   var sensorData : [SensorData] = [
     { ofs = frontLeftOffset, obs = flEst, maxRange = usMaxRange, maxAngle = usMaxAngle },
@@ -691,8 +703,7 @@ network {
   sensor speedRight : Float
   sensor steeringAngle : Float
 
-  // Brake actuator - determines whether to brake or not (what kind of value do
-  // we want to write to this?)
+  // Brake actuator - determines whether to brake or not
   actuator brake : Float
 
   task speedEst = speedEst(500ms)
