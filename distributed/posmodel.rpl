@@ -219,7 +219,7 @@ template speedEst(period : Int) {
   input lspeed : Float
   input rspeed : Float
   output speed : Dist(Line)
-  infer initSpeed <- initialSpeedModel([]) particles 1000
+  infer initialSpeedModel([]) particles 1000 to initSpeed
   var acc : TSV(Dist(Line)) = tsv(0, initSpeed)
   loop acc {
     sdelay period
@@ -227,7 +227,7 @@ template speedEst(period : Int) {
     read rspeed to rObs
     var obs = concat(lObs, rObs)
     cond d if gtInt(|obs|, 0) {
-      infer d <- speedModel(acc, obs) particles 1000
+      infer speedModel(acc, obs) particles 1000 to d
       write d to speed
     } else {
       d = value(acc)
@@ -387,7 +387,7 @@ template frontRearDistance(period : Int) {
   input steeringAngleObs : Float
   input speedEst : Dist(Line)
   output distEst : Dist(Float)
-  infer initSpeed <- initialSpeedModel([]) particles 1000
+  infer initialSpeedModel([]) particles 1000 to initSpeed
   var lastSpeed = tsv(0, initSpeed)
   var lastObs = []
   loop lastSpeed {
@@ -400,8 +400,9 @@ template frontRearDistance(period : Int) {
     } else {}
     lastSpeed = maxDistLineTimestamp(lastSpeed, speed)
     cond if minValue(saObs) == maxValue(saObs) || geqInt(|lastObs|, 3) {
-      infer d <- frontRearDistanceModel(lastObs, saObs, lastSpeed, usMaxRange)
+      infer frontRearDistanceModel(lastObs, saObs, lastSpeed, usMaxRange)
         particles 1000
+        to d
       write d to distEst
     } else {}
   }
@@ -428,7 +429,7 @@ template sideDistance(period : Int) {
       lastObs = takeNMostRecent(concat(lastObs, obs), 3)
     } else {}
     cond if geqInt(|lastObs|, 3) {
-      infer d <- sideDistanceModel(lastObs, tofMaxRange) particles 1000
+      infer sideDistanceModel(lastObs, tofMaxRange) particles 1000 to d
       write d to distEst
     } else {}
   }
@@ -589,8 +590,8 @@ template positionEstimate(period : Int) {
   var posBudget : Int = subInt(period, 100ms)
   var m : RoomMap = readRoomMap()
   var blocks : [Coordinate] = findFreeRoomCoordinates(m)
-  infer initSpeed <- initialSpeedModel([]) particles 1000
-  infer d <- initialPositionModel(blocks) particles 1000
+  infer initialSpeedModel([]) particles 1000 to initSpeed
+  infer initialPositionModel(blocks) particles 1000 to d
   var acc = {
     speed = tsv(0, initSpeed),
     d = tsv(0, d),
@@ -611,9 +612,10 @@ template positionEstimate(period : Int) {
       acc.sa = maxFloatTimestamp(saObs)
     } else {}
     acc.speed = maxDistLineTimestamp(acc.speed, speedEst)
-    infer d <- positionModel(m, acc.d, flEst, frEst, rlEst, rrEst, lEst, rEst,
+    infer positionModel(m, acc.d, flEst, frEst, rlEst, rrEst, lEst, rEst,
                              acc.speed, acc.sa)
       budget posBudget
+      to d
     acc.d = tsv(0, d)
   }
 }
@@ -690,8 +692,8 @@ template brakeEstimate(period : Int, safetyMargin : Float) {
   output brake : Float
   var m : RoomMap = readRoomMap ()
   var blocks : [Coordinate] = findFreeRoomCoordinates(m)
-  infer initSpeed <- initialSpeedModel([]) particles 1000
-  infer d <- initialPositionModel(blocks) particles 1000
+  infer initialSpeedModel([]) particles 1000 to initSpeed
+  infer initialPositionModel(blocks) particles 1000 to d
   var acc = {
     speed = tsv(0, initSpeed),
     pos = tsv(0, d)
@@ -704,7 +706,7 @@ template brakeEstimate(period : Int, safetyMargin : Float) {
     read speed to speedEst
     acc.pos = maxDistPosTimestamp(acc.pos, posEst)
     acc.speed = maxDistLineTimestamp(acc.speed, speedEst)
-    infer d <- brakeDistanceModel(m, acc.pos, acc.speed) particles 1000
+    infer brakeDistanceModel(m, acc.pos, acc.speed) particles 1000 to d
     cond if medianValue(samples d) < safetyMargin {
       write 0.0 to brake
     } else {}
