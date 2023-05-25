@@ -165,9 +165,9 @@ model observeSpeeds(speedObs : [TSV(Float)], line : Line, sigma : Float) : Unit 
 }
 
 model initialSpeedModel(speedObs : [TSV(Float)]) : Line {
-  assume m ~ Gaussian(0.0, 0.1)
-  assume b ~ Uniform(0.0, maxSpeed)
-  assume sigma ~ Gamma(1.0, 1.0)
+  sample m ~ Gaussian(0.0, 0.1)
+  sample b ~ Uniform(0.0, maxSpeed)
+  sample sigma ~ Gamma(1.0, 1.0)
   var line = {slope = m, intercept = b}
   observeSpeeds(speedObs, line, sigma)
   return line
@@ -187,12 +187,12 @@ def allSpeedObsEqual(tsvs : [TSV(Float)]) : Bool {
 // using Bayesian linear regression. The current implementation does not make
 // use of our prior knowledge of the speed.
 model speedModel(prior : TSV(Dist(Line)), speedObs : [TSV(Float)]) : Line {
-  assume m ~ Gaussian(0.0, 0.1)
-  assume b ~ Uniform(0.0, maxSpeed)
-  assume sigma ~ Gamma(1.0, 1.0)
+  sample m ~ Gaussian(0.0, 0.1)
+  sample b ~ Uniform(0.0, maxSpeed)
+  sample sigma ~ Gamma(1.0, 1.0)
   var line = {slope = m, intercept = b}
 
-  assume prevLine ~ value(prior)
+  sample prevLine ~ value(prior)
   cond if allSpeedObsEqual(speedObs) {
     // NOTE(larshum, 2023-05-24): If all our observations are the same, we know
     // all observed speeds are in an interval [10*x, 10*x+10). If our estimated
@@ -352,10 +352,10 @@ model frontRearDistanceModel(distanceObs : [TSV(Float)],
   cond res if allOutOfRange(distanceObs, maxSensorRange) {
     res = maxSensorRange
   } else {
-    assume line ~ value(speedEst)
-    assume m ~ Gaussian(0.0, line.intercept)
-    assume b ~ Uniform(0.0, maxDistance)
-    assume sigma ~ Gamma(1.0, 1.0)
+    sample line ~ value(speedEst)
+    sample m ~ Gaussian(0.0, line.intercept)
+    sample b ~ Uniform(0.0, maxDistance)
+    sample sigma ~ Gamma(1.0, 1.0)
     cond res if minValue(saObs) == maxValue(saObs) {
       loop for tsv in distanceObs {
         var ts = timestampToSeconds(timestamp(tsv))
@@ -443,9 +443,9 @@ model initialPositionModel(blocks : [Coordinate]) : Pos {
   var c : Coordinate = randElemExn(blocks)
   var x : Float = intToFloat(c.col) * roomBlockWidth
   var y : Float = intToFloat(c.row) * roomBlockWidth
-  assume xOfs ~ Uniform(0.0, roomBlockWidth)
-  assume yOfs ~ Uniform(0.0, roomBlockWidth)
-  assume d ~ Uniform(0.0, 2.0 * pi)
+  sample xOfs ~ Uniform(0.0, roomBlockWidth)
+  sample yOfs ~ Uniform(0.0, roomBlockWidth)
+  sample d ~ Uniform(0.0, 2.0 * pi)
   return { x = x + xOfs, y = y + yOfs, direction = d }
 }
 
@@ -531,9 +531,9 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float
                     rEst : [TSV(Dist(Float))], speedEst : TSV(Dist(Line)),
                     saObs : TSV(Float)) : Pos {
 
-  assume posPrev ~ value(prior)
-  assume speedLine ~ value(speedEst)
-  assume sigma ~ Gamma(0.5, 1.0)
+  sample posPrev ~ value(prior)
+  sample speedLine ~ value(speedEst)
+  sample sigma ~ Gamma(0.5, 1.0)
   var speedFn : Int -> Float = f(tsv(timestamp(speedEst), speedLine))
 
   var v = speedFn(timestamp(prior))
@@ -564,7 +564,7 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float
       cond expectedDist if expectedDist > s.maxRange {
         expectedDist = s.maxRange
       } else {}
-      assume estDist ~ value(tsv)
+      sample estDist ~ value(tsv)
       observe estDist ~ Gaussian(expectedDist, sigma)
     }
   }
@@ -646,8 +646,8 @@ def f(line : TSV(Line), t : Int) : Float {
 }
 
 model brakeDistanceModel(m : RoomMap, pos : TSV(Dist(Pos)), speed : TSV(Dist(Line))) : Float {
-  assume p ~ value(pos)
-  assume speedLn ~ value(speed)
+  sample p ~ value(pos)
+  sample speedLn ~ value(speed)
 
   // Estimate the current position based on our position and speed estimates.
   var speedFn = f(tsv(timestamp(speed), speedLn))
@@ -714,7 +714,7 @@ template brakeEstimate(period : Int, safetyMargin : Float) {
   }
 }
 
-network {
+system {
   // Distance sensors
   sensor frontLeft : Float
   sensor frontRight : Float
