@@ -14,13 +14,14 @@ type SensorData = { ofs : Offset, obs : [TSV(Dist(Float))], maxRange : Float }
 
 const roomBlockWidth : Float = 0.1
 const wheelCircumference : Float = 0.33
-const maxSpeed : Float = 0.1
+const maxSpeed : Float = 0.63
 const maxSpeedRpm : Float = maxSpeed * 60.0 / wheelCircumference
 const usMaxRange : Float = 4.0
 const usMaxAngle : Float = 0.4363323129985824
 const tofMaxRange : Float = 1.25
 const tofMaxAngle : Float = 0.2617993877991494
 const maxDistance : Float = 10.0
+const maxSteer : Float = 20.0
 const wheelbase : Float = 0.35
 
 const zeroOffset : Offset = { angle = 0.0, distance = 0.0, direction = 0.0 }
@@ -56,6 +57,22 @@ def tan(x : Float) : Float {
 
 def degToRad(degAngle : Float) : Float {
   return degAngle * pi / 180.0
+}
+
+def abs(x : Float) : Float {
+  cond x if x < 0.0 {
+    x = 0.0 - x
+  } else {}
+  return x
+}
+
+def maxFloat(a : Float, b : Float) : Float {
+  cond res if a < b {
+    res = b
+  } else {
+    res = a
+  }
+  return res
 }
 
 def sgn(x : Float) : Float {
@@ -159,7 +176,11 @@ model observeSpeeds(speedObs : [TSV(Float)], line : Line, sigma : Float) : Unit 
   loop for tsv in speedObs {
     var ts = timestampToSeconds(timestamp(tsv))
     var rpm = value(tsv)
-    var mps = rpm * wheelCircumference / 60.0
+    cond mps if rpm == 0.0 {
+      mps = 0.0
+    } else {
+      mps = maxSpeed
+    }
     observe mps ~ Gaussian(line.slope * ts + line.intercept, sigma)
   }
 }
@@ -173,16 +194,6 @@ model initialSpeedModel(speedObs : [TSV(Float)]) : Line {
   return line
 }
 
-def allSpeedObsEqual(tsvs : [TSV(Float)]) : Bool {
-  var acc = {b = true, v = value(tsvs[0])}
-  loop acc for tsv in tsvs {
-    cond acc if value(tsv) != acc.v {
-      acc.b = false
-    } else {}
-  }
-  return acc.b
-}
-
 // Estimate the current speed of the car through the given observed speeds,
 // using Bayesian linear regression. The current implementation does not make
 // use of our prior knowledge of the speed.
@@ -193,24 +204,12 @@ model speedModel(prior : TSV(Dist(Line)), speedObs : [TSV(Float)]) : Line {
   var line = {slope = m, intercept = b}
 
   sample prevLine ~ value(prior)
-  cond if allSpeedObsEqual(speedObs) {
-    // NOTE(larshum, 2023-05-24): If all our observations are the same, we know
-    // all observed speeds are in an interval [10*x, 10*x+10). If our estimated
-    // current speed is outside this interval, we mark this particle as
-    // degenerate.
-    var obsRpm = floorToInt(value(speedObs[0]))
-    var currRpm = b * 60.0 / wheelCircumference
-    cond if not(eqInt(mulInt(floorToInt(currRpm / 10.0), 10), obsRpm)) {
-      degenerate
-    } else {}
-  } else {
-    // NOTE(larshum, 2023-05-15): We use Bayesian linear regression to estimate
-    // the solution to the function f(t) = m * t + b, where t is the timestamp in
-    // seconds. We use our prior estimation as our initial value.
-    var ts = timestampToSeconds(timestamp(prior))
-    observe prevLine.intercept ~ Gaussian(line.slope * ts + line.intercept, sigma)
-    observeSpeeds(speedObs, line, sigma)
-  }
+  // NOTE(larshum, 2023-05-15): We use Bayesian linear regression to estimate
+  // the solution to the function f(t) = m * t + b, where t is the timestamp in
+  // seconds. We use our prior estimation as our initial value.
+  var ts = timestampToSeconds(timestamp(prior))
+  observe prevLine.intercept ~ Gaussian(line.slope * ts + line.intercept, sigma)
+  observeSpeeds(speedObs, line, sigma)
 
   return line
 }
@@ -399,7 +398,7 @@ template frontRearDistance(period : Int) {
       lastObs = takeNMostRecent(concat(lastObs, obs), 10)
     } else {}
     lastSpeed = maxDistLineTimestamp(lastSpeed, speed)
-    cond if minValue(saObs) == maxValue(saObs) || geqInt(|lastObs|, 3) {
+    cond if (minValue(saObs) == 0.0 && maxValue(saObs) == 0.0) || geqInt(|lastObs|, 3) {
       infer frontRearDistanceModel(lastObs, saObs, lastSpeed, usMaxRange)
         particles 1000
         to d
@@ -440,13 +439,14 @@ template sideDistance(period : Int) {
 // direction of the car relative to the map is known, and that the car is
 // stationary when the model starts running.
 model initialPositionModel(blocks : [Coordinate]) : Pos {
-  var c : Coordinate = randElemExn(blocks)
-  var x : Float = intToFloat(c.col) * roomBlockWidth
-  var y : Float = intToFloat(c.row) * roomBlockWidth
-  sample xOfs ~ Uniform(0.0, roomBlockWidth)
-  sample yOfs ~ Uniform(0.0, roomBlockWidth)
-  sample d ~ Uniform(0.0, 2.0 * pi)
-  return { x = x + xOfs, y = y + yOfs, direction = d }
+  //var c : Coordinate = randElemExn(blocks)
+  //var x : Float = intToFloat(c.col) * roomBlockWidth
+  //var y : Float = intToFloat(c.row) * roomBlockWidth
+  //assume xOfs ~ Uniform(0.0, roomBlockWidth)
+  //assume yOfs ~ Uniform(0.0, roomBlockWidth)
+  //assume d ~ Uniform(0.0, 2.0 * pi)
+  //return { x = x + xOfs, y = y + yOfs, direction = d }
+  return {x = 8.0, y = 1.0, direction = pi}
 }
 
 // The position denotes our belief of the center of the car. The cone angle
@@ -525,6 +525,20 @@ def computePos(p0 : Pos, l : Float, r : Float, steeringAngle : Float) : Pos {
   return p1
 }
 
+def smallFrontAngle(m : RoomMap, p : Pos) : Bool {
+  var inBounds : Pos -> Bool = withinRoomBounds(m)
+  var ld = estimateDistance(frontLeftOffset, 0.0, p, inBounds)
+  var rd = estimateDistance(frontRightOffset, 0.0, p, inBounds)
+  return abs(ld - rd) / maxFloat(ld, rd) > 0.2
+}
+
+def smallRearAngle(m : RoomMap, p : Pos) : Bool {
+  var inBounds : Pos -> Bool = withinRoomBounds(m)
+  var ld = estimateDistance(rearLeftOffset, 0.0, p, inBounds)
+  var rd = estimateDistance(rearRightOffset, 0.0, p, inBounds)
+  return abs(ld - rd) / maxFloat(ld, rd) > 0.2
+}
+
 model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float))],
                     frEst : [TSV(Dist(Float))], rlEst : [TSV(Dist(Float))],
                     rrEst : [TSV(Dist(Float))], lEst : [TSV(Dist(Float))],
@@ -537,26 +551,49 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float
   var speedFn : Int -> Float = f(tsv(timestamp(speedEst), speedLine))
 
   var v = speedFn(timestamp(prior))
-  // We assume the most recent steering angle is the current steering angle
+  // We assume the most recent steering angle is the current steering angle. We
+  // compute this based on the observed behavior of the wheels when given
+  // different steering inputs.
   // NOTE(larshum, 2023-05-23): We swap the sign of the steering angle because
   // the y-axis of the map is inverted (the upper left corner of the PNG is
   // (0,0)).
-  var sa = 0.0 - degToRad(value(saObs))
+  cond sa if value(saObs) > 0.0 {
+    sa = 0.03 - degToRad(value(saObs) / maxSteer * 0.186)
+  } else {
+    sa = 0.03 + degToRad(value(saObs) / maxSteer * 0.243)
+  }
   var turnRadius = wheelbase / tan(sa)
   cond turnRadius if turnRadius < 0.0 {
     turnRadius = 0.0 - turnRadius
   } else {}
 
+  // NOTE(larshum, 2023-05-25): We always consider sensor data from the sides.
+  // For the front and rear sensors, we ignore the data if the estimated
+  // distance between the sensors is too large, as we cannot rely on such
+  // observations for the sound-based sensors.
   var sensorData : [SensorData] = [
-    { ofs = frontLeftOffset, obs = flEst, maxRange = usMaxRange, maxAngle = usMaxAngle },
-    { ofs = frontRightOffset, obs = frEst, maxRange = usMaxRange, maxAngle = usMaxAngle },
-    { ofs = rearLeftOffset, obs = rlEst, maxRange = usMaxRange, maxAngle = usMaxAngle },
-    { ofs = rearRightOffset, obs = rrEst, maxRange = usMaxRange, maxAngle = usMaxAngle },
     { ofs = sideLeftOffset, obs = lEst, maxRange = tofMaxRange, maxAngle = tofMaxAngle },
     { ofs = sideRightOffset, obs = rEst, maxRange = tofMaxRange, maxAngle = tofMaxAngle }
   ]
+  cond sensorData if smallFrontAngle(m, posPrev) {
+    sensorData = push(sensorData,
+    { ofs = frontLeftOffset, obs = flEst, maxRange = usMaxRange, maxAngle = usMaxAngle }
+    )
+    sensorData = push(sensorData, 
+    { ofs = frontRightOffset, obs = frEst, maxRange = usMaxRange, maxAngle = usMaxAngle }
+    )
+  } else {}
+  cond sensorData if smallRearAngle(m, posPrev) {
+    sensorData = push(sensorData,
+    { ofs = rearLeftOffset, obs = rlEst, maxRange = usMaxRange, maxAngle = usMaxAngle }
+    )
+    sensorData = push(sensorData,
+    { ofs = rearRightOffset, obs = rrEst, maxRange = usMaxRange, maxAngle = usMaxAngle }
+    )
+  } else {}
+
+  var inBounds : Pos -> Bool = withinRoomBounds(m)
   loop for s in sensorData {
-    var inBounds : Pos -> Bool = withinRoomBounds(m)
     loop for tsv in s.obs {
       var distTravelled = areaUnderLine(speedFn, timestamp(prior), timestamp(tsv))
       var pos = computePos(posPrev, distTravelled, turnRadius, sa)
