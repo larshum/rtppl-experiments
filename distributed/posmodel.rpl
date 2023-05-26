@@ -19,7 +19,7 @@ const usMaxAngle : Float = 0.4363323129985824
 const tofMaxRange : Float = 1.25
 const tofMaxAngle : Float = 0.2617993877991494
 const maxDistance : Float = 10.0
-const maxSteer : Float = 20.0
+const maxSteer : Float = 0.349
 const wheelbase : Float = 0.35
 
 const zeroOffset : Offset = { angle = 0.0, distance = 0.0, direction = 0.0 }
@@ -391,7 +391,7 @@ model initialPositionModel(blocks : [Coordinate]) : Pos {
   //assume yOfs ~ Uniform(0.0, roomBlockWidth)
   //assume d ~ Uniform(0.0, 2.0 * pi)
   //return { x = x + xOfs, y = y + yOfs, direction = d }
-  return {x = 8.0, y = 1.0, direction = pi}
+  return {x = 3.58, y = 3.6, direction = 1.5*pi}
 }
 
 // The position denotes our belief of the center of the car. The cone angle
@@ -487,9 +487,9 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float
   // the y-axis of the map is inverted (the upper left corner of the PNG is
   // (0,0)).
   cond sa if value(saObs) > 0.0 {
-    sa = 0.03 - degToRad(value(saObs) / maxSteer * 0.186)
+    sa = 0.03 - degToRad(value(saObs)) / maxSteer * 0.25//186
   } else {
-    sa = 0.03 + degToRad(value(saObs) / maxSteer * 0.243)
+    sa = 0.03 + degToRad(value(saObs)) / maxSteer * 0.243
   }
   var turnRadius = wheelbase / tan(sa)
   cond turnRadius if turnRadius < 0.0 {
