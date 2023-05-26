@@ -14,14 +14,14 @@ import dist
 now = datetime.now()
 target = f'plots/{now.strftime("%Y%m%d-%H%M%S")}'
 os.mkdir(target)
-path = sys.argv[1]
-skipped_fst = False
 vals = []
-for _,d in dist.read_dists(f"{path}/pos-posEst", 3):
-    if skipped_fst:
-        vals.append(len(d))
-    else:
-        skipped_fst = True
+for path in sys.argv[1:]:
+    skipped_fst = False
+    for _,d in dist.read_dists(f"{path}/pos-posEst", 3):
+        if skipped_fst:
+            vals.append(len(d))
+        else:
+            skipped_fst = True
 print(vals)
 fig, axs0 = plt.subplots(1)
 axs0.hist(vals, bins=np.arange(0.0, max(vals), 100))
