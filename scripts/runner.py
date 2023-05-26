@@ -11,9 +11,26 @@ import network
 
 procs = []
 
+if not os.path.isfile("relay"):
+    subprocess.run(["g++", "relay.cpp", "-std=c++17", "-o", "relay"])
+
+p = argparse.ArgumentParser()
+p.add_argument("-p", "--path", action="store", required=True)
+p.add_argument("-m", "--map", action="store", required=True)
+p.add_argument("-r", "--replay", action="store")
+args = p.parse_args()
+
+map_file = args.map
+path = args.path
+
+nw = network.read_network(f"{path}/network.json")
+
 def handler(sig, frame):
-    print("Killing remaining processes");
+    print("Killing remaining processes")
     for proc in procs:
+        cmd = ["ps", "-p", str(proc.pid), "-o", "%cpu,%mem"]
+        p = subprocess.run(cmd, capture_output=True)
+        print(proc.args, str(p.stdout))
         proc.send_signal(signal.SIGINT)
         proc.send_signal(signal.SIGINT)
         try:
@@ -32,19 +49,6 @@ def ispipe(f):
 
 signal.signal(signal.SIGINT, handler)
 
-if not os.path.isfile("relay"):
-    subprocess.run(["g++", "relay.cpp", "-std=c++17", "-o", "relay"])
-
-p = argparse.ArgumentParser()
-p.add_argument("-p", "--path", action="store", required=True)
-p.add_argument("-m", "--map", action="store", required=True)
-p.add_argument("-r", "--replay", action="store")
-args = p.parse_args()
-
-map_file = args.map
-path = args.path
-
-nw = network.read_network(f"{path}/network.json")
 if args.replay:
     subprocess.run(["python3", "scripts/clean.py", "-p", path])
     for _, dsts in nw["sensor_outs"].items():
