@@ -13,10 +13,6 @@ import sys
 
 import dist
 
-def to_curr_speed(dist):
-    ts, d = dist
-    return (ts, [(w, [v]) for w, [_, v] in d])
-
 def read_opt_floats(f):
     try:
         with open(f, mode="rb") as file:
@@ -43,9 +39,17 @@ def read_pos_dists(f):
 def read_float_dists(f):
     return sorted(dist.read_dists(f, 1), key=lambda x: x[0])
 
-def read_speed_dists(f):
-    speed_lines = sorted(dist.read_dists(f, 2), key=lambda x: x[0])
-    return [to_curr_speed(d) for d in speed_lines]
+def read_speeds(f):
+    with open(f, mode="rb") as f:
+        content = f.read()
+
+    speeds = []
+    ofs = 0
+    while ofs < len(content):
+        _, ts, speed = struct.unpack("=qqd", content[ofs:ofs+24])
+        ofs += 24
+        speeds.append((ts, speed))
+    return sorted(speeds, key=lambda x: x[0])
 
 p = argparse.ArgumentParser()
 p.add_argument("-m", "--map", action="store", required=True)
@@ -67,7 +71,7 @@ inputs = {
     "rear-right": read_float_dists("rearRight-distEst"),
     "left": read_float_dists("leftSide-distEst"),
     "right": read_float_dists("rightSide-distEst"),
-    "speed": read_speed_dists("speedEst-speed")
+    "speed": read_speeds("speedEst-speed")
 }
 true_vals = read_opt_floats("true-values.txt")
 
@@ -99,15 +103,19 @@ def choose_closest_after_timestamp(s, ts):
 def plot_dist(axs, dists, ts, max_val, true_val):
     ts, samples = choose_closest_after_timestamp(dists, ts)
     weights, values = [], []
-    for w, v in samples:
-        weights.append(w)
-        values.append(v[0])
+    if type(samples) is float:
+        weights.append(1)
+        values.append(samples)
+    else:
+        for w, v in samples:
+            weights.append(w)
+            values.append(v[0])
     weights = np.array(weights)
     axs.clear()
     axs.hist(values, bins=np.arange(0.0, max_val + max_val/10, max_val/10), rwidth=0.9, weights=weights)
     if true_val is not None:
         axs.axvline(x=true_val, ymin=0.99, ymax=1.0, color="green")
-    axs.set_title(f"{(ts-fst_ts)/1e9}:\n#particles={len(samples)}")
+    axs.set_title(f"{(ts-fst_ts)/1e9}:\n#particles={len(values)}")
 
 def plot_pos_dist(axs, dists, ts, true_vals):
     ts, samples = choose_closest_after_timestamp(dists, ts)
@@ -159,7 +167,7 @@ def update(ts, label):
         idx = 9
     else:
         print(f"Unknown label: {label}")
-    maxvs = [0, 0, 0, 8.0, 8.0, 8.0, 8.0, 4.0, 4.0, 0.1]
+    maxvs = [0, 0, 0, 8.0, 8.0, 8.0, 8.0, 4.0, 4.0, 0.65]
     max_val = maxvs[idx]
     laxs.set_ylabel("probability")
     if tv is not None:
