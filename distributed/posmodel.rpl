@@ -10,6 +10,7 @@ type Offset = { angle : Float, distance : Float, direction : Float }
 
 type SensorData = { ofs : Offset, obs : [TSV(Dist(Float))], maxRange : Float }
 
+const pi : Float = 4.0 * atan(1.0)
 const roomBlockWidth : Float = 0.1
 const wheelCircumference : Float = 0.33
 const maxSpeed : Float = 0.63
@@ -36,7 +37,7 @@ const rearRightOffset : Offset = {
   angle = 2.76725903758, distance = 0.30083217913, direction = pi
 }
 const sideLeftOffset : Offset = {
-  angle = 0.0-2.15879893034, distance = 0.126194294641, direction = (3.0 * pi) / 2.0
+  angle = 0.0-2.15879893034, distance = 0.126194294641, direction = 1.5 * pi
 }
 const sideRightOffset : Offset = {
   angle = 2.15879893034, distance = 0.126194294641, direction = pi / 2.0
@@ -297,11 +298,11 @@ model frontRearDistanceModel(distanceObs : [TSV(Float)],
   cond res if allOutOfRange(distanceObs, maxSensorRange) {
     res = maxSensorRange
   } else {
-    var v = value(speedEst)
-    sample m ~ Gaussian(dir * v, 0.1)
-    sample b ~ Uniform(0.0, maxDistance)
-    sample sigma ~ Gamma(1.0, 1.0)
-    cond res if minValue(saObs) == maxValue(saObs) {
+    cond res if minValue(saObs) == 0.0 && maxValue(saObs) == 0.0 {
+      var v = value(speedEst)
+      sample m ~ Gaussian(dir * v, 0.1)
+      sample b ~ Uniform(0.0, maxDistance)
+      sample sigma ~ Gamma(1.0, 1.0)
       loop for tsv in distanceObs {
         var ts = timestampToSeconds(timestamp(tsv))
         observe value(tsv) ~ Gaussian(m * ts + b, sigma)
@@ -353,7 +354,6 @@ template frontRearDistance(period : Int, dir : Float) {
 }
 
 model sideDistanceModel(distObs : [TSV(Float)], maxSensorRange : Float) : Float {
-  var res = 0.0
   cond res if allOutOfRange(distObs, maxSensorRange) {
     res = maxSensorRange
   } else {
@@ -391,7 +391,7 @@ model initialPositionModel(blocks : [Coordinate]) : Pos {
   //assume yOfs ~ Uniform(0.0, roomBlockWidth)
   //assume d ~ Uniform(0.0, 2.0 * pi)
   //return { x = x + xOfs, y = y + yOfs, direction = d }
-  return {x = 3.58, y = 3.6, direction = 1.5*pi}
+  return {x = 3.59, y = 3.48, direction = 1.5*pi}
 }
 
 // The position denotes our belief of the center of the car. The cone angle
@@ -487,7 +487,7 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float
   // the y-axis of the map is inverted (the upper left corner of the PNG is
   // (0,0)).
   cond sa if value(saObs) > 0.0 {
-    sa = 0.03 - degToRad(value(saObs)) / maxSteer * 0.25//186
+    sa = 0.03 - degToRad(value(saObs)) / maxSteer * 0.186
   } else {
     sa = 0.03 + degToRad(value(saObs)) / maxSteer * 0.243
   }
