@@ -4,10 +4,46 @@ import os
 import signal
 import subprocess
 import stat
+import struct
 import sys
 import time
 
 import network
+
+def replay_messages(replay_path, target_path, sensor_outputs):
+    # Read the raw data from all sensor files
+    msgs = []
+    for _, dsts in sensor_outputs:
+        for dst in dsts:
+            with open(f"{replay_path}/{dst}", "rb") as f:
+                dst_file = open(f"{target_path}/{dst}", "wb")
+                msgs.append((dst_file, f.read()))
+
+    # Interpret the raw data so that we can order it by timestamps
+    out_data = []
+    for dst, payload in msgs:
+        ofs = 0
+        while ofs < len(payload):
+            sz, ts = struct.unpack("=qq", payload[ofs:ofs+16])
+            out_data.append((dst, ts, payload[ofs+16:ofs+sz+8]))
+            ofs += sz + 8
+    out_data = sorted(out_data, key=lambda x: x[1])
+
+    # Replay the raw data by sending it out in the order it was observed in
+    start_time = time.clock_gettime_ns(time.CLOCK_MONOTONIC)
+    t0 = out_data[0][1]
+    for f, t1, payload in out_data:
+        exec_time = time.clock_gettime_ns(time.CLOCK_MONOTONIC) - start_time
+        t_delta = t1 - t0
+        if exec_time < t_delta:
+            time.sleep((t_delta - exec_time) / 1e9)
+        msg = struct.pack("=qq", len(payload) + 8, start_time + t_delta) + payload
+        f.write(msg)
+        f.flush()
+
+    # Close the output files before quitting
+    for f, _, _ in out_data:
+        f.close()
 
 procs = []
 
@@ -43,22 +79,12 @@ def handler(sig, frame):
             proc.wait()
     sys.exit(0)
 
-def ispipe(f):
-    try:
-        return stat.S_ISFIFO(os.stat(f).st_mode)
-    except:
-        return False
-
 signal.signal(signal.SIGINT, handler)
 
 if args.replay:
     subprocess.run(["python3", "scripts/clean.py", "-p", path])
-    for _, dsts in nw["sensor_outs"].items():
-        for dst in dsts:
-            cmd = ["python3", "scripts/writer.py", f"{args.replay}/{dst}", f"{path}/{dst}"]
-            print(cmd)
-            procs.append(subprocess.Popen(cmd))
 
+original_path = os.getcwd()
 os.chdir(path)
 for src, dsts in nw["sensor_outs"].items():
     pass
@@ -74,14 +100,19 @@ for task in nw["tasks"]:
     taskLog = open(f"{task}-logfile.txt", "w+")
     procs.append(subprocess.Popen(cmd, stdout=taskLog, env={"OCAMLRUNPARAM": "b"}))
 
-while True:
-    live = []
-    for proc in procs:
-        if proc.poll():
-            proc.kill()
-            proc.wait()
-            print(f"Process {proc.args} died")
-        else:
-            live.append(proc)
-    procs = live
-    time.sleep(1)
+if args.replay:
+    os.chdir(original_path)
+    replay_messages(args.replay, path, nw["sensor_outs"].items())
+    handler(signal.SIGINT, None)
+else:
+    while True:
+        live = []
+        for proc in procs:
+            if proc.poll():
+                proc.kill()
+                proc.wait()
+                print(f"Process {proc.args} died")
+            else:
+                live.append(proc)
+        procs = live
+        time.sleep(0.1)
