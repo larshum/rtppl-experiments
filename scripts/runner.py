@@ -18,6 +18,7 @@ p = argparse.ArgumentParser()
 p.add_argument("-p", "--path", action="store", required=True)
 p.add_argument("-m", "--map", action="store", required=True)
 p.add_argument("-r", "--replay", action="store")
+p.add_argument("-u", "--usage", action="store_true")
 args = p.parse_args()
 
 map_file = args.map
@@ -28,9 +29,10 @@ nw = network.read_network(f"{path}/network.json")
 def handler(sig, frame):
     print("Killing remaining processes")
     for proc in procs:
-        cmd = ["ps", "-p", str(proc.pid), "-o", "%cpu,%mem"]
-        p = subprocess.run(cmd, capture_output=True)
-        print(proc.args, str(p.stdout))
+        if args.usage:
+            cmd = ["ps", "-p", str(proc.pid), "-o", "%cpu,%mem"]
+            p = subprocess.run(cmd, capture_output=True)
+            print(proc.args, str(p.stdout))
         proc.send_signal(signal.SIGINT)
         proc.send_signal(signal.SIGINT)
         try:
