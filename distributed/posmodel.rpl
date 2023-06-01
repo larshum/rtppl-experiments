@@ -10,11 +10,12 @@ type Offset = { angle : Float, distance : Float, direction : Float }
 
 type SensorData = { ofs : Offset, obs : [TSV(Dist(Float))], maxRange : Float }
 
+type Line = { slope : Float, intercept : Float }
+
 const pi : Float = 4.0 * atan(1.0)
 const roomBlockWidth : Float = 0.1
 const wheelCircumference : Float = 0.33
 const maxSpeed : Float = 0.63
-const maxSpeedRpm : Float = maxSpeed * 60.0 / wheelCircumference
 const usMaxRange : Float = 4.0
 const usMaxAngle : Float = 0.4363323129985824
 const tofMaxRange : Float = 1.25
@@ -193,22 +194,56 @@ def maxFloatTimestamp(tsvs : [TSV(Float)]) : TSV(Float) {
   return acc
 }
 
+// We assume the car starts from a stationary state.
+model initSpeedModel() : Line {
+  return {slope = 0.0, intercept = 0.0}
+}
+
+model speedModel(prior : TSV(Dist(Line)), tsvs : [TSV(Float)]) : Line {
+  sample l ~ value(prior)
+  sample b ~ Gaussian(l.slope, 0.1)
+  sample m ~ Uniform(0.0, maxSpeed)
+  sample sigma ~ Gamma(1.0, 1.0)
+
+  loop for obs in tsvs {
+    var ms = value(obs) * wheelCircumference / 60.0
+    var t = timestampToSeconds(timestamp(obs))
+    observe ms ~ Gaussian(m + b * t, sigma)
+  }
+
+  return {slope = b, intercept = m}
+}
+
+def takeNMostRecent(a : [TSV(Float)], n : Int) : [TSV(Float)] {
+  a = sort(cmpFloatTimestamp, a)
+  cond a if gtInt(|a|, n) {
+    var res = []
+    loop res for i in range(0, n) {
+      res = push(res, a[subInt(|a|, subInt(n, i))])
+    }
+    a = res
+  } else {}
+  return a
+}
+
 template speedEst(period : Int) {
   input lspeed : Float
   input rspeed : Float
-  output speed : Float
-  loop {
+  output speed : Dist(Line)
+  infer initSpeedModel() particles 1000 to initSpeed
+  var acc = {
+    prior = tsv(0, initSpeed),
+    obs = []
+  }
+  loop acc {
     sdelay period
     read lspeed to lObs
     read rspeed to rObs
-    var obs = concat(lObs, rObs)
-    cond if gtInt(|obs|, 0) {
-      var v = maxFloatTimestamp(obs)
-      cond if value(v) == 0.0 {
-        write 0.0 to speed
-      } else {
-        write maxSpeed to speed
-      }
+    acc.obs = takeNMostRecent(concat(acc.obs, concat(lObs, rObs)), 10)
+    cond acc if gtInt(|acc.obs|, 0) {
+      infer speedModel(acc.prior, acc.obs) particles 1000 to d
+      write d to speed
+      acc.prior = tsv(0, d)
     } else {}
   }
 }
@@ -289,7 +324,7 @@ def allOutOfRange(distanceObs : [TSV(Float)], maxRange : Float) : Bool {
 }
 
 model frontRearDistanceModel(distanceObs : [TSV(Float)],
-                             saObs : [TSV(Float)], speedEst : TSV(Float),
+                             saObs : [TSV(Float)], speedEst : TSV(Dist(Line)),
                              maxSensorRange : Float, dir : Float) : Float {
   // NOTE(larshum, 2023-05-16): If all distance observations are outside of the
   // range, the true distance can be anywhere beyond the maximum range of the
@@ -299,7 +334,8 @@ model frontRearDistanceModel(distanceObs : [TSV(Float)],
     res = maxSensorRange
   } else {
     cond res if minValue(saObs) == 0.0 && maxValue(saObs) == 0.0 {
-      var v = value(speedEst)
+      sample l ~ value(speedEst)
+      var v = l.intercept + l.slope * timestampToSeconds(subInt(0, timestamp(speedEst)))
       sample m ~ Gaussian(dir * v, 0.1)
       sample b ~ Uniform(0.0, maxDistance)
       sample sigma ~ Gamma(1.0, 1.0)
@@ -316,36 +352,34 @@ model frontRearDistanceModel(distanceObs : [TSV(Float)],
   return res
 }
 
-def takeNMostRecent(a : [TSV(Float)], n : Int) : [TSV(Float)] {
-  a = sort(cmpFloatTimestamp, a)
-  cond a if gtInt(|a|, n) {
-    var res = []
-    loop res for i in range(0, n) {
-      res = push(res, a[subInt(|a|, subInt(n, i))])
-    }
-    a = res
-  } else {}
-  return a
+def maxDistLineTimestamp(acc : TSV(Dist(Line)), tsvs : [TSV(Dist(Line))]) : TSV(Dist(Line)) {
+  loop acc for tsv in tsvs {
+    cond acc if ltInt(timestamp(acc), timestamp(tsv)) {
+      acc = tsv
+    } else {}
+  }
+  return acc
 }
 
 template frontRearDistance(period : Int, dir : Float) {
   input distObs : Float
   input steeringAngleObs : Float
-  input speedEst : Dist(Float)
+  input speedEst : Dist(Line)
   output distEst : Dist(Float)
-  var lastSpeed = tsv(0, 0.0)
-  var lastObs = []
-  loop lastSpeed {
+  infer initSpeedModel() particles 1000 to initSpeed
+  var acc = {
+    lastSpeed = tsv(0, initSpeed),
+    lastObs = []
+  }
+  loop acc {
     sdelay period
     read distObs to obs
     read steeringAngleObs to saObs
     read speedEst to speed
-    cond lastObs if gtInt(|obs|, 0) {
-      lastObs = takeNMostRecent(concat(lastObs, obs), 10)
-    } else {}
-    lastSpeed = maxFloatTimestamp(concat([lastSpeed], speed))
-    cond if (minValue(saObs) == 0.0 && maxValue(saObs) == 0.0) || geqInt(|lastObs|, 3) {
-      infer frontRearDistanceModel(lastObs, saObs, lastSpeed, usMaxRange, dir)
+    acc.lastObs = takeNMostRecent(concat(acc.lastObs, obs), 10)
+    acc.lastSpeed = maxDistLineTimestamp(acc.lastSpeed, speed)
+    cond if geqInt(|acc.lastObs|, 3) {
+      infer frontRearDistanceModel(acc.lastObs, saObs, acc.lastSpeed, usMaxRange, dir)
         particles 1000
         to d
       write d to distEst
@@ -470,16 +504,27 @@ def smallRearAngle(m : RoomMap, p : Pos) : Bool {
   return abs(ld - rd) / maxFloat(ld, rd) > 0.2
 }
 
+def lineFn(l : Line, relativeTs : Int, ts : Int) : Float {
+  var t = timestampToSeconds(subInt(ts, relativeTs))
+  return l.intercept + t * l.slope
+}
+
+def areaBelowLine(f : Int -> Float, a : Int, b : Int) : Float {
+  var delta = timestampToSeconds(subInt(b, a))
+  return ((f(a) + f(b)) * delta) / 2.0
+}
+
 model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float))],
                     frEst : [TSV(Dist(Float))], rlEst : [TSV(Dist(Float))],
                     rrEst : [TSV(Dist(Float))], lEst : [TSV(Dist(Float))],
-                    rEst : [TSV(Dist(Float))], speedEst : TSV(Float),
+                    rEst : [TSV(Dist(Float))], speedEst : TSV(Dist(Line)),
                     saObs : TSV(Float)) : Pos {
 
   sample posPrev ~ value(prior)
   sample sigma ~ Gamma(0.5, 1.0)
+  sample l ~ value(speedEst)
+  var speedFn = lineFn(l, timestamp(speedEst))
 
-  var v = value(speedEst)
   // We assume the most recent steering angle is the current steering angle. We
   // compute this based on the observed behavior of the wheels when given
   // different steering inputs.
@@ -524,7 +569,7 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float
   var inBounds : Pos -> Bool = withinRoomBounds(m)
   loop for s in sensorData {
     loop for tsv in s.obs {
-      var distTravelled = v * timestampToSeconds(subInt(timestamp(tsv), timestamp(prior)))
+      var distTravelled = areaBelowLine(speedFn, timestamp(prior), timestamp(tsv))
       var pos = computePos(posPrev, distTravelled, turnRadius, sa)
       var expectedDist = estimateDistance(s.ofs, s.maxAngle, pos, inBounds)
       cond expectedDist if expectedDist > s.maxRange {
@@ -535,7 +580,7 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float
     }
   }
 
-  var dist = v * timestampToSeconds(subInt(0, timestamp(prior)))
+  var dist = areaBelowLine(speedFn, timestamp(prior), 0)
   var pos = computePos(posPrev, dist, turnRadius, sa)
   cond if not(carWithinRoomBounds(m, pos)) {
     degenerate
@@ -550,17 +595,18 @@ template positionEstimate(period : Int) {
   input rearRight : Dist(Float)
   input left : Dist(Float)
   input right : Dist(Float)
-  input speed : Float
+  input speed : Dist(Line)
   input steeringAngle : Float
   output posEst : Dist(Pos)
   var posBudget : Int = subInt(period, 100ms)
   var m : RoomMap = readRoomMap()
   var blocks : [Coordinate] = findFreeRoomCoordinates(m)
   infer initialPositionModel(blocks) particles 1000 to d
+  infer initSpeedModel() particles 1000 to initSpeed
   var acc = {
-    speed = tsv(0, 0.0),
     d = tsv(0, d),
-    sa = tsv(0, 0.0)
+    sa = tsv(0, 0.0),
+    speed = tsv(0, initSpeed)
   }
   loop acc {
     write value(acc.d) to posEst
@@ -573,12 +619,10 @@ template positionEstimate(period : Int) {
     read right to rEst
     read speed to speedEst
     read steeringAngle to saObs
-    cond acc if gtInt(|saObs|, 0) {
-      acc.sa = maxFloatTimestamp(saObs)
-    } else {}
-    acc.speed = maxFloatTimestamp(concat([acc.speed], speedEst))
+    acc.sa = maxFloatTimestamp(concat([acc.sa], saObs))
+    acc.speed = maxDistLineTimestamp(acc.speed, speedEst)
     infer positionModel(m, acc.d, flEst, frEst, rlEst, rrEst, lEst, rEst,
-                             acc.speed, acc.sa)
+                        acc.speed, acc.sa)
       budget posBudget
       to d
     acc.d = tsv(0, d)
@@ -596,12 +640,13 @@ def clamp(v : Float, lo : Float, hi : Float) : Float {
   return v
 }
 
-model brakeDistanceModel(m : RoomMap, pos : TSV(Dist(Pos)), speed : TSV(Float)) : Float {
+model brakeDistanceModel(m : RoomMap, pos : TSV(Dist(Pos)), speed : TSV(Dist(Line))) : Float {
   sample p ~ value(pos)
-  var v = value(speed)
 
   // Estimate the current position based on our position and speed estimates.
-  var dist = v * timestampToSeconds(subInt(0, timestamp(pos)))
+  sample l ~ value(speed)
+  var speedFn = lineFn(l, timestamp(speed))
+  var dist = areaBelowLine(speedFn, timestamp(pos), 0)
   var currPos = {
     x = p.x + dist * cos(p.direction),
     y = p.y + dist * sin(p.direction),
@@ -609,8 +654,8 @@ model brakeDistanceModel(m : RoomMap, pos : TSV(Dist(Pos)), speed : TSV(Float)) 
   }
 
   // Compute the distance needed to brake if we start now.
-  // TODO: tune this for the car rather than the simulator.
-  var brakeDist = 5.0 * v * v
+  // TODO: tune this for the physical car.
+  var brakeDist = 1.0
 
   // Compute the distance until the car crashes given that it keeps driving in
   // its current direction.
@@ -637,13 +682,14 @@ def medianValue(x : {s : [Float], w : [Float]}) : Float {
 // task will signal to activate the emergency brakes.
 template brakeEstimate(period : Int, safetyMargin : Float) {
   input pos : Dist(Pos)
-  input speed : Float
+  input speed : Dist(Line)
   output brake : Float
   var m : RoomMap = readRoomMap ()
   var blocks : [Coordinate] = findFreeRoomCoordinates(m)
   infer initialPositionModel(blocks) particles 1000 to d
+  infer initSpeedModel() particles 1000 to initSpeed
   var acc = {
-    speed = tsv(0, 0.0),
+    speed = tsv(0, initSpeed),
     pos = tsv(0, d)
   }
   // Wait a while until our first estimation, as the first position estimates
@@ -653,7 +699,7 @@ template brakeEstimate(period : Int, safetyMargin : Float) {
     read pos to posEst
     read speed to speedEst
     acc.pos = maxDistPosTimestamp(acc.pos, posEst)
-    acc.speed = maxFloatTimestamp(concat([acc.speed], speedEst))
+    acc.speed = maxDistLineTimestamp(acc.speed, speedEst)
     infer brakeDistanceModel(m, acc.pos, acc.speed) particles 1000 to d
     cond if medianValue(samples d) < safetyMargin {
       write 0.0 to brake
@@ -679,7 +725,7 @@ system {
   // Brake actuator - determines whether to brake or not
   actuator brake : Float
 
-  task speedEst = speedEst(100ms)
+  task speedEst = speedEst(500ms)
   task frontLeft = frontRearDistance(500ms, 0.0 - 1.0)
   task frontRight = frontRearDistance(500ms, 0.0 - 1.0)
   task rearLeft = frontRearDistance(500ms, 1.0)

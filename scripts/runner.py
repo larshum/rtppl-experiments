@@ -30,10 +30,10 @@ def replay_messages(replay_path, target_path, sensor_outputs):
     out_data = sorted(out_data, key=lambda x: x[1])
 
     # Replay the raw data by sending it out in the order it was observed in
-    start_time = time.clock_gettime_ns(time.CLOCK_MONOTONIC)
+    start_time = time.time_ns()
     t0 = out_data[0][1]
     for f, t1, payload in out_data:
-        exec_time = time.clock_gettime_ns(time.CLOCK_MONOTONIC) - start_time
+        exec_time = time.time_ns() - start_time
         t_delta = t1 - t0
         if exec_time < t_delta:
             time.sleep((t_delta - exec_time) / 1e9)
@@ -103,6 +103,7 @@ for task in nw["tasks"]:
 if args.replay:
     os.chdir(original_path)
     replay_messages(args.replay, path, nw["sensor_outs"].items())
+    time.sleep(1)
     handler(signal.SIGINT, None)
 else:
     while True:
