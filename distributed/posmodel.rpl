@@ -248,6 +248,22 @@ template speedEst(period : Int) {
   }
 }
 
+def clamp(value : Float, lo : Float, hi : Float) : Float {
+  cond value if value < lo {
+    value = lo
+  } else {
+    cond value if value > hi {
+      value = hi
+    } else {}
+  }
+  return value
+}
+
+def speedFunc(speedLine : Line, relativeTs : Int, ts : Int) : Float {
+  var t = timestampToSeconds(subInt(ts, relativeTs))
+  return clamp(speedLine.intercept + t * speedLine.slope, 0.0, maxSpeed)
+}
+
 def maxValue(s : [TSV(Float)]) : Float {
   var acc = neginf
   loop acc for x in s {
@@ -335,7 +351,7 @@ model frontRearDistanceModel(distanceObs : [TSV(Float)],
   } else {
     cond res if minValue(saObs) == 0.0 && maxValue(saObs) == 0.0 {
       sample l ~ value(speedEst)
-      var v = l.intercept + l.slope * timestampToSeconds(subInt(0, timestamp(speedEst)))
+      var v = speedFunc(l, timestamp(speedEst), 0)
       sample m ~ Gaussian(dir * v, 0.1)
       sample b ~ Uniform(0.0, maxDistance)
       sample sigma ~ Gamma(1.0, 1.0)
@@ -504,11 +520,6 @@ def smallRearAngle(m : RoomMap, p : Pos) : Bool {
   return abs(ld - rd) / maxFloat(ld, rd) > 0.2
 }
 
-def lineFn(l : Line, relativeTs : Int, ts : Int) : Float {
-  var t = timestampToSeconds(subInt(ts, relativeTs))
-  return l.intercept + t * l.slope
-}
-
 def areaBelowLine(f : Int -> Float, a : Int, b : Int) : Float {
   var delta = timestampToSeconds(subInt(b, a))
   return ((f(a) + f(b)) * delta) / 2.0
@@ -523,7 +534,7 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float
   sample posPrev ~ value(prior)
   sample sigma ~ Gamma(0.5, 1.0)
   sample l ~ value(speedEst)
-  var speedFn = lineFn(l, timestamp(speedEst))
+  var speedFn = speedFunc(l, timestamp(speedEst))
 
   // We assume the most recent steering angle is the current steering angle. We
   // compute this based on the observed behavior of the wheels when given
@@ -645,7 +656,7 @@ model brakeDistanceModel(m : RoomMap, pos : TSV(Dist(Pos)), speed : TSV(Dist(Lin
 
   // Estimate the current position based on our position and speed estimates.
   sample l ~ value(speed)
-  var speedFn = lineFn(l, timestamp(speed))
+  var speedFn = speedFunc(l, timestamp(speed))
   var dist = areaBelowLine(speedFn, timestamp(pos), 0)
   var currPos = {
     x = p.x + dist * cos(p.direction),
