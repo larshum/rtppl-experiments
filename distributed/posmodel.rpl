@@ -737,7 +737,7 @@ template brakeEstimate(period : Int, safetyMargin : Float) {
 }
 
 system {
-  // Distance sensors
+  // Distance sensors (payload contains distance in meters)
   sensor frontLeft : Float
   sensor frontRight : Float
   sensor rearLeft : Float
@@ -746,13 +746,19 @@ system {
   sensor sideRight : Float
 
   // Wheel sensors
-  sensor speedLeft : Float
-  sensor speedRight : Float
-  sensor steeringAngle : Float
+  sensor speedLeft : Float // speed in RPM
+  sensor speedRight : Float // speed in RPM
+  sensor steeringAngle : Float // steering in degrees
 
-  // Brake actuator - determines whether to brake or not
+  // Brake actuator
+  // Writing a value to this actuator (the payload is irrelevant) starts the
+  // emergency brakes, running the motor in reverse and preventing acceleration
+  // inputs.
   actuator brake : Float
 
+  // Tasks
+  // We define periodic tasks, where the first argument to each task template
+  // denotes the period of the respective tasks.
   task speedEst = speedEst(500ms)
   task frontLeft = frontRearDistance(500ms, 0.0 - 1.0)
   task frontRight = frontRearDistance(500ms, 0.0 - 1.0)
