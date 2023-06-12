@@ -146,27 +146,6 @@ def findFreeRoomCoordinates(m : RoomMap) : [Coordinate] {
   return blocks
 }
 
-def absInt(x : Int) : Int {
-  cond x if ltInt(x, 0) {
-    x = negInt(x)
-  } else {}
-  return x
-}
-
-// Computes the sigma (of a normal distribution) based on the relative
-// timestamp. We use this under the assumption that an observation made closer
-// in time to 0 (the logically local time) should be considered more accurate.
-// If the timestamp is too close to the logically local time, we use a
-// pre-determined constant instead.
-def timeRelativeSigma(ts : Int) : Float {
-  var min : Float = 0.01
-  var x : Float = intToFloat(absInt(ts)) / intToFloat(1s)
-  cond x if x < min {
-    x = min
-  } else { }
-  return x
-}
-
 // Converts a given relative timestamp, in nanoseconds, to a number in seconds.
 def timestampToSeconds(ts : Int) : Float {
   return intToFloat(ts) / intToFloat(1s)
@@ -200,15 +179,64 @@ model initSpeedModel() : Line {
   return {slope = b, intercept = m}
 }
 
-// TODO(larshum, 2023-06-08): Rewrite the speed model to use three distinct
-// modes: stationary, accelerating/decelerating (analogous), and max speed.
-//
-// Stationary: all observations are zero, we assume the speed of the car is
-// (very close to) zero.
-// Acc/dec: observed both zero and non-zero, we are highly uncertain about the
-// speed of the car.
-// Max: all observations are greater than zero, we assume the car has reached
-// its maximum speed.
+def carIsStationary(tsvs : [TSV(Float)]) : Bool {
+  var stationary = true
+  loop stationary for tsv in tsvs {
+    cond stationary if value(tsv) != 0.0 {
+      stationary = false
+    } else {}
+  }
+  return stationary
+}
+
+def carAtMaxSpeed(tsvs : [TSV(Float)]) : Bool {
+  var maxSpeed = false
+  loop maxSpeed for tsv in tsvs {
+    cond maxSpeed if value(tsv) == 0.0 {
+      maxSpeed = false
+    } else {}
+  }
+  return maxSpeed
+}
+
+// NOTE(larshum, 2023-06-12): The speed model uses three distinct states to
+// describe the speed of the car. We make this simplification as the physical
+// car reaches it maximum speed in such a short amount of time that it is not
+// interesting to estimate exactly what its speed is in-between acceleration or
+// deceleration.
+model speedModel2(tsvs : [TSV(Float)]) : Float {
+  var v = 0.0
+  cond v if carIsStationary(tsvs) {
+    // NOTE(larshum, 2023-06-12): As the lowest non-zero speed we can observe
+    // is 10 RPM, we know the true speed of the car is anywhere within this
+    // interval.
+    // TODO: Unless we know the speed observations are very accurate, we should
+    // not use a uniform distribution here (what if we're driving at 10.01
+    // RPM?).
+    sample v ~ Uniform(0.0, wheelCircumference / 6.0)
+  } else {
+    cond v if carAtMaxSpeed(tsvs) {
+      // TODO: use measurement data to decide on how much "noise" to add
+    } else {
+      // TODO: We could be smarter here, by considering the observed values and
+      // seeing whether they are strictly increasing/decreasing. Then, we could
+      // detect at an earlier point in time whether the car is decelerating
+      // (now we notice this when its speed is close to zero).
+      var lastTsv = maxFloatTimestamp(tsvs)
+      cond v if value(lastTsv) == 0.0 {
+        sample v ~ Uniform(0.0, wheelCircumference / 6.0)
+      } else {
+        // TODO: in this case, we may not have reached the maximum speed yet.
+        // Therefore, we should introduce uncertainty around a reasonable
+        // estimate of the current speed. We could base this on how long time
+        // has passed since we last observed a zero, as an estimate of how long
+        // we have been accelerating.
+      }
+    }
+  }
+  return v
+}
+
 model speedModel(prior : TSV(Dist(Line)), tsvs : [TSV(Float)]) : Line {
   sample l ~ value(prior)
   sample sigma ~ Gamma(1.0, 1.0)
