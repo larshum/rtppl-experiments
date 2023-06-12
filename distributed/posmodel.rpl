@@ -273,6 +273,29 @@ def takeNMostRecent(a : [TSV(Float)], n : Int) : [TSV(Float)] {
   return a
 }
 
+def expectedSpeed(d : Dist(Line)) : Float {
+  var v = 0.0
+  var s = samples d
+  var values = s.s
+  var weights = s.w
+  loop v for i in range(0, |values|) {
+    var ln = values[i]
+    v = v + ln.intercept * exp(weights[i])
+  }
+  return v
+}
+
+def expectedFloat(d : Dist(Float)) : Float {
+  var dist = 0.0
+  var s = samples d
+  var values = s.s
+  var weights = s.w
+  loop dist for i in range(0, |values|) {
+    dist = dist + values[i] * exp(weights[i])
+  }
+  return dist
+}
+
 template speedEst(period : Int) {
   input lspeed : Float
   input rspeed : Float
@@ -289,6 +312,7 @@ template speedEst(period : Int) {
     acc.obs = takeNMostRecent(concat(acc.obs, concat(lObs, rObs)), 10)
     infer speedModel(acc.prior, acc.obs) particles 1000 to d
     write d to speed
+    printLn(floatToString(expectedSpeed(d)))
     acc.prior = tsv(0, d)
   }
 }
@@ -444,6 +468,7 @@ template frontRearDistance(period : Int, dir : Float) {
         particles 1000
         to d
       write d to distEst
+      printLn(floatToString(expectedFloat(d)))
     } else {}
   }
 }
@@ -470,6 +495,7 @@ template sideDistance(period : Int) {
     cond if geqInt(|lastObs|, 3) {
       infer sideDistanceModel(lastObs, tofMaxRange) particles 1000 to d
       write d to distEst
+      printLn(floatToString(expectedFloat(d)))
     } else {}
   }
 }
