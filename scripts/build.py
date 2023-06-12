@@ -9,7 +9,7 @@ def write_line(f, targets):
 
 path = sys.argv[1]
 os.chdir(path)
-p = subprocess.run(["rtppl", "posmodel.rpl", "--print-sdelay-time"])
+p = subprocess.run(["rtppl", "posmodel.rpl"] + sys.argv[2:])
 if p.returncode != 0:
     print("RTPPL compilation failed")
     exit(1)
