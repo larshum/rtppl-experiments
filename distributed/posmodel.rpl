@@ -216,7 +216,12 @@ model speedModel2(tsvs : [TSV(Float)]) : Float {
     sample v ~ Uniform(0.0, wheelCircumference / 6.0)
   } else {
     cond v if carAtMaxSpeed(tsvs) {
-      // TODO: use measurement data to decide on how much "noise" to add
+      // NOTE(larshum, 2023-06-13): We assume the car is at roughly max speed,
+      // which we know a distribution for from measurement data.
+      // TODO: Check whether the speed is significantly different when the
+      // wheels are turning. Otherwise, our model may not work well when the
+      // car turns.
+      sample v ~ Gaussian(0.644832291, 0.015678625)
     } else {
       // TODO: We could be smarter here, by considering the observed values and
       // seeing whether they are strictly increasing/decreasing. Then, we could
