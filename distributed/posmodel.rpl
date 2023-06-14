@@ -31,6 +31,9 @@ const frontLeftOffset : Offset = {
 const frontRightOffset : Offset = {
   angle = 0.209639845874, distance = 0.240260275535, direction = 0.0
 }
+const frontCenterOffset : Offset = {
+  angle = 0.0, distance = 0.23, direction = 0.0
+}
 const rearLeftOffset : Offset = {
   angle = 0.0-2.76725903758, distance = 0.30083217913, direction = pi
 }
@@ -451,7 +454,7 @@ def maxDistLineTimestamp(acc : TSV(Dist(Line)), tsvs : [TSV(Dist(Line))]) : TSV(
   return acc
 }
 
-template frontRearDistance(period : Int, dir : Float) {
+template frontRearDistance(period : Int, dir : Float, maxRange : Float) {
   input distObs : Float
   input steeringAngleObs : Float
   input speedEst : Dist(Line)
@@ -469,7 +472,7 @@ template frontRearDistance(period : Int, dir : Float) {
     acc.lastObs = takeNMostRecent(concat(acc.lastObs, obs), 10)
     acc.lastSpeed = maxDistLineTimestamp(acc.lastSpeed, speed)
     cond if geqInt(|acc.lastObs|, 3) {
-      infer frontRearDistanceModel(acc.lastObs, saObs, acc.lastSpeed, usMaxRange, dir)
+      infer frontRearDistanceModel(acc.lastObs, saObs, acc.lastSpeed, maxRange, dir)
         particles 1000
         to d
       write d to distEst
@@ -602,10 +605,10 @@ def areaBelowLine(f : Int -> Float, a : Int, b : Int) : Float {
 }
 
 model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float))],
-                    frEst : [TSV(Dist(Float))], rlEst : [TSV(Dist(Float))],
-                    rrEst : [TSV(Dist(Float))], lEst : [TSV(Dist(Float))],
-                    rEst : [TSV(Dist(Float))], speedEst : TSV(Dist(Line)),
-                    saObs : TSV(Float)) : Pos {
+                    frEst : [TSV(Dist(Float))], fcEst : [TSV(Dist(Float))],
+                    rlEst : [TSV(Dist(Float))], rrEst : [TSV(Dist(Float))],
+                    lEst : [TSV(Dist(Float))], rEst : [TSV(Dist(Float))],
+                    speedEst : TSV(Dist(Line)), saObs : TSV(Float)) : Pos {
 
   sample posPrev ~ value(prior)
   sample sigma ~ Gamma(0.5, 1.0)
@@ -634,7 +637,8 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float
   // observations for the sound-based sensors.
   var sensorData : [SensorData] = [
     { ofs = sideLeftOffset, obs = lEst, maxRange = tofMaxRange, maxAngle = tofMaxAngle },
-    { ofs = sideRightOffset, obs = rEst, maxRange = tofMaxRange, maxAngle = tofMaxAngle }
+    { ofs = sideRightOffset, obs = rEst, maxRange = tofMaxRange, maxAngle = tofMaxAngle },
+    { ofs = frontCenterOffset, obs = fcEst, maxRange = tofMaxRange, maxAngle = tofMaxAngle }
   ]
   cond sensorData if smallFrontAngle(m, posPrev) {
     sensorData = push(sensorData,
@@ -678,6 +682,7 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float
 template positionEstimate(period : Int) {
   input frontLeft : Dist(Float)
   input frontRight : Dist(Float)
+  input frontCenter : Dist(Float)
   input rearLeft : Dist(Float)
   input rearRight : Dist(Float)
   input left : Dist(Float)
@@ -700,6 +705,7 @@ template positionEstimate(period : Int) {
     sdelay period
     read frontLeft to flEst
     read frontRight to frEst
+    read frontCenter to fcEst
     read rearLeft to rlEst
     read rearRight to rrEst
     read left to lEst
@@ -708,8 +714,8 @@ template positionEstimate(period : Int) {
     read steeringAngle to saObs
     acc.sa = maxFloatTimestamp(concat([acc.sa], saObs))
     acc.speed = maxDistLineTimestamp(acc.speed, speedEst)
-    infer positionModel(m, acc.d, flEst, frEst, rlEst, rrEst, lEst, rEst,
-                        acc.speed, acc.sa)
+    infer positionModel(m, acc.d, flEst, frEst, fcEst, rlEst, rrEst, lEst,
+                        rEst, acc.speed, acc.sa)
       budget posBudget
       to d
     acc.d = tsv(0, d)
@@ -799,6 +805,7 @@ system {
   // Distance sensors (payload contains distance in meters)
   sensor frontLeft : Float
   sensor frontRight : Float
+  sensor frontCenter : Float
   sensor rearLeft : Float
   sensor rearRight : Float
   sensor sideLeft : Float
@@ -819,10 +826,11 @@ system {
   // We define periodic tasks, where the first argument to each task template
   // denotes the period of the respective tasks.
   task speedEst = speedEst(500ms)
-  task frontLeft = frontRearDistance(500ms, 0.0 - 1.0)
-  task frontRight = frontRearDistance(500ms, 0.0 - 1.0)
-  task rearLeft = frontRearDistance(500ms, 1.0)
-  task rearRight = frontRearDistance(500ms, 1.0)
+  task frontLeft = frontRearDistance(500ms, 0.0 - 1.0, usMaxRange)
+  task frontRight = frontRearDistance(500ms, 0.0 - 1.0, usMaxRange)
+  task frontCenter = frontRearDistance(500ms, 0.0 - 1.0, tofMaxRange)
+  task rearLeft = frontRearDistance(500ms, 1.0, usMaxRange)
+  task rearRight = frontRearDistance(500ms, 1.0, usMaxRange)
   task leftSide = sideDistance(500ms)
   task rightSide = sideDistance(500ms)
   task pos = positionEstimate(1s)
@@ -841,6 +849,10 @@ system {
   steeringAngle -> frontRight.steeringAngleObs
   speedEst.speed -> frontRight.speedEst
 
+  frontCenter -> frontCenter.distObs
+  steeringAngle -> frontCenter.steeringAngleObs
+  speedEst.speed -> frontCenter.speedEst
+
   rearLeft -> rearLeft.distObs
   steeringAngle -> rearLeft.steeringAngleObs
   speedEst.speed -> rearLeft.speedEst
@@ -856,6 +868,7 @@ system {
   // Position estimation inputs
   frontLeft.distEst -> pos.frontLeft
   frontRight.distEst -> pos.frontRight
+  frontCenter.distEst -> pos.frontCenter
   rearLeft.distEst -> pos.rearLeft
   rearRight.distEst -> pos.rearRight
   leftSide.distEst -> pos.left
