@@ -15,9 +15,13 @@ def replay_messages(replay_path, target_path, sensor_outputs):
     msgs = []
     for _, dsts in sensor_outputs:
         for dst in dsts:
-            with open(f"{replay_path}/{dst}", "rb") as f:
-                dst_file = open(f"{target_path}/{dst}", "wb")
-                msgs.append((dst_file, f.read()))
+            try:
+                with open(f"{replay_path}/{dst}", "rb") as f:
+                    dst_file = open(f"{target_path}/{dst}", "wb")
+                    msgs.append((dst_file, f.read()))
+            except:
+                # Do not provide any data if the file was not found
+                pass
 
     # Interpret the raw data so that we can order it by timestamps
     out_data = []

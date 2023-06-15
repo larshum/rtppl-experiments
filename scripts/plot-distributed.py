@@ -39,14 +39,6 @@ def read_pos_dists(f):
 def read_float_dists(f):
     return sorted(dist.read_dists(f, 1), key=lambda x: x[0])
 
-def to_curr_speed(dist):
-    ts, d = dist
-    return ts, [(w, [v]) for w, [_, v] in d]
-
-def read_speeds(f):
-    speeds = sorted(dist.read_dists(f, 2), key=lambda x: x[0])
-    return [to_curr_speed(d) for d in speeds]
-
 p = argparse.ArgumentParser()
 p.add_argument("-m", "--map", action="store", required=True)
 p.add_argument("-p", "--path", action="store", required=True)
@@ -67,7 +59,7 @@ inputs = {
     "rear-right": read_float_dists("rearRight-distEst"),
     "left": read_float_dists("leftSide-distEst"),
     "right": read_float_dists("rightSide-distEst"),
-    "speed": read_speeds("speedEst-speed")
+    "speed": read_float_dists("speedEst-speed")
 }
 true_vals = read_opt_floats("true-values.txt")
 
@@ -159,7 +151,7 @@ def update(ts, label):
         idx = 9
     else:
         print(f"Unknown label: {label}")
-    maxvs = [0, 0, 0, 4.0, 4.0, 4.0, 4.0, 2.0, 2.0, 0.65]
+    maxvs = [0, 0, 0, 4.0, 4.0, 4.0, 4.0, 2.0, 2.0, 0.8]
     max_val = maxvs[idx]
     laxs.set_ylabel("probability")
     if tv is not None:
