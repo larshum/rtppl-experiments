@@ -630,6 +630,30 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float
   return pos
 }
 
+def expectedPos(d : Dist(Pos)) : Pos {
+  var pos = {x = 0.0, y = 0.0, direction = 0.0}
+  var s = samples d
+  var values = s.s
+  var weights = s.w
+  loop pos for i in range(0, |values|) {
+    var p = values[i]
+    var w = weights[i]
+    pos.x = pos.x + p.x * w
+    pos.y = pos.y + p.y * w
+    pos.direction = pos.direction + p.direction * w
+  }
+  return pos
+}
+
+def printPos(p : Pos) : Unit {
+  print("x = ")
+  print(floatToString(p.x))
+  print(", y = ")
+  print(floatToString(p.y))
+  print(", d = ")
+  printLn(floatToString(p.direction))
+}
+
 template positionEstimate(period : Int) {
   input frontLeft : Dist(Float)
   input frontRight : Dist(Float)
@@ -669,6 +693,7 @@ template positionEstimate(period : Int) {
                         rEst, acc.speed, acc.sa)
       budget posBudget
       to d
+    printPos(expectedPos(d))
     acc.d = tsv(0, d)
   }
 }
