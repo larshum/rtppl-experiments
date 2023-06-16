@@ -22,6 +22,10 @@ const maxDistance : Float = 10.0
 const maxSteer : Float = 20.0 * pi / 180.0
 const wheelbase : Float = 0.35
 
+// NOTE(larshum, 2023-06-16): This is where we define the initial position of
+// the car, which we assume is known beforehand.
+const initPos : Pos = { x = 2.68, y = 3.7, direction = 1.5*pi }
+
 const zeroOffset : Offset = { angle = 0.0, distance = 0.0, direction = 0.0 }
 const frontLeftOffset : Offset = {
   angle = 0.0-0.209639845874, distance = 0.240260275535, direction = 0.0
@@ -135,18 +139,6 @@ def carWithinRoomBounds(m : RoomMap, center : Pos) : Bool {
   return acc
 }
 
-def findFreeRoomCoordinates(m : RoomMap) : [Coordinate] {
-  var blocks : [Coordinate] = []
-  loop blocks for row in range(0, m.rows) {
-    loop blocks for col in range(0, m.cols) {
-      cond blocks if not(m.data[row][col]) {
-        blocks = push(blocks, {row = row, col = col})
-      } else {}
-    }
-  }
-  return blocks
-}
-
 // Converts a given relative timestamp, in nanoseconds, to a number in seconds.
 def timestampToSeconds(ts : Int) : Float {
   return intToFloat(ts) / intToFloat(1s)
@@ -224,12 +216,9 @@ model speedModel(tsvs : [TSV(Float)]) : Float {
     v = 0.0
   } else {
     cond v if carAtMaxSpeed(tsvs) {
-      // NOTE(larshum, 2023-06-13): We assume the car is at roughly max speed,
-      // which we know a distribution for from measurement data.
-      // TODO: Check whether the speed is significantly different when the
-      // wheels are turning. Otherwise, our model may not work well when the
-      // car turns.
-      sample v ~ Gaussian(0.644832291, 0.015678625)
+      // NOTE(larshum, 2023-06-16): We assume the car is driving at its max
+      // speed, which we estimated based on measurement on the car.
+      sample v ~ Gaussian(0.69, 0.05)
     } else {
       // NOTE(larshum, 2023-06-15): In case the last value is not zero, we
       // assume the car is accelerating. We have no idea what the speed is,
@@ -265,17 +254,14 @@ def expectedFloat(d : Dist(Float)) : Float {
 }
 
 def printFloats(obs : [TSV(Float)]) : Unit {
-  cond if gtInt(|obs|, 0) {
-    print("[(")
-    loop for tsv in obs {
-      print(intToString(timestamp(tsv)))
-      print(",")
-      print(floatToString(value(tsv)))
-      print(")")
-      print("; ")
-    }
-    printLn("]")
-  } else {}
+  print("[(")
+  loop for tsv in obs {
+    print(intToString(timestamp(tsv)))
+    print(",")
+    print(floatToString(value(tsv)))
+    print("; ")
+  }
+  printLn("]")
 }
 
 template speedEst(period : Int) {
@@ -283,16 +269,17 @@ template speedEst(period : Int) {
   input rspeed : Float
   output speed : Dist(Float)
   infer initSpeedModel() particles 1000 to initSpeed
-  var obs = []
-  loop obs {
+  loop {
     sdelay period
     read lspeed to lObs
     read rspeed to rObs
     obs = sort(cmpFloatTimestamp, concat(lObs, rObs))
-    infer speedModel(obs) particles 1000 to d
-    write d to speed
-    printFloats(obs)
-    printLn(floatToString(expectedFloat(d)))
+    cond if gtInt(|obs|, 0) {
+      infer speedModel(obs) particles 1000 to d
+      write d to speed
+      printFloats(obs)
+      printLn(floatToString(expectedFloat(d)))
+    } else {}
   }
 }
 
@@ -401,10 +388,10 @@ model frontRearDistanceModel(distanceObs : [TSV(Float)],
     }
   }
 
-  return res
+  return clamp(res, 0.0, maxSensorRange)
 }
 
-template frontRearDistance(period : Int, dir : Float, maxRange : Float) {
+template frontRearDistance(period : Int, dir : Float, maxRange : Float, nobs : Int) {
   input distObs : Float
   input steeringAngleObs : Float
   input speedEst : Dist(Float)
@@ -419,7 +406,7 @@ template frontRearDistance(period : Int, dir : Float, maxRange : Float) {
     read distObs to obs
     read steeringAngleObs to saObs
     read speedEst to speed
-    acc.lastObs = takeNMostRecentFloat(concat(acc.lastObs, obs), 10)
+    acc.lastObs = takeNMostRecentFloat(concat(acc.lastObs, obs), nobs)
     acc.lastSpeed = maxDistFloatTimestamp(acc.lastSpeed, speed)
     cond if geqInt(|acc.lastObs|, 3) {
       infer frontRearDistanceModel(acc.lastObs, saObs, acc.lastSpeed, maxRange, dir)
@@ -434,12 +421,7 @@ template frontRearDistance(period : Int, dir : Float, maxRange : Float) {
 
 model sideDistanceModel(distObs : [TSV(Float)], maxSensorRange : Float) : Float {
   var m = medianOfLastThreeFloatTsv(distObs)
-  cond res if m > maxSensorRange {
-    res = maxSensorRange
-  } else {
-    res = m
-  }
-  return res
+  return clamp(m, 0.0, maxSensorRange)
 }
 
 template sideDistance(period : Int) {
@@ -461,19 +443,8 @@ template sideDistance(period : Int) {
   }
 }
 
-// We choose the initial position by choosing a random block of the map,
-// and then sampling coordinates within the block. We assume that the initial
-// direction of the car relative to the map is known, and that the car is
-// stationary when the model starts running.
-model initialPositionModel(blocks : [Coordinate]) : Pos {
-  //var c : Coordinate = randElemExn(blocks)
-  //var x : Float = intToFloat(c.col) * roomBlockWidth
-  //var y : Float = intToFloat(c.row) * roomBlockWidth
-  //assume xOfs ~ Uniform(0.0, roomBlockWidth)
-  //assume yOfs ~ Uniform(0.0, roomBlockWidth)
-  //assume d ~ Uniform(0.0, 2.0 * pi)
-  //return { x = x + xOfs, y = y + yOfs, direction = d }
-  return {x = 3.59, y = 3.48, direction = 1.5*pi}
+model initialPositionModel() : Pos {
+  return initPos
 }
 
 // The position denotes our belief of the center of the car. The cone angle
@@ -637,7 +608,7 @@ def expectedPos(d : Dist(Pos)) : Pos {
   var weights = s.w
   loop pos for i in range(0, |values|) {
     var p = values[i]
-    var w = weights[i]
+    var w = exp(weights[i])
     pos.x = pos.x + p.x * w
     pos.y = pos.y + p.y * w
     pos.direction = pos.direction + p.direction * w
@@ -667,8 +638,7 @@ template positionEstimate(period : Int) {
   output posEst : Dist(Pos)
   var posBudget : Int = subInt(period, 100ms)
   var m : RoomMap = readRoomMap()
-  var blocks : [Coordinate] = findFreeRoomCoordinates(m)
-  infer initialPositionModel(blocks) particles 1000 to d
+  infer initialPositionModel() particles 1000 to d
   infer initSpeedModel() particles 1000 to initSpeed
   var acc = {
     d = tsv(0, d),
@@ -696,17 +666,6 @@ template positionEstimate(period : Int) {
     printPos(expectedPos(d))
     acc.d = tsv(0, d)
   }
-}
-
-def clamp(v : Float, lo : Float, hi : Float) : Float {
-  cond v if v < lo {
-    v = lo
-  } else {
-    cond v if v > hi {
-      v = hi
-    } else {}
-  }
-  return v
 }
 
 model brakeDistanceModel(m : RoomMap, pos : TSV(Dist(Pos)), speed : TSV(Dist(Float))) : Float {
@@ -755,8 +714,7 @@ template brakeEstimate(period : Int, safetyMargin : Float) {
   input speed : Dist(Float)
   output brake : Float
   var m : RoomMap = readRoomMap ()
-  var blocks : [Coordinate] = findFreeRoomCoordinates(m)
-  infer initialPositionModel(blocks) particles 1000 to d
+  infer initialPositionModel() particles 1000 to d
   infer initSpeedModel() particles 1000 to initSpeed
   var acc = {
     speed = tsv(0, initSpeed),
@@ -801,9 +759,9 @@ system {
   // We define periodic tasks, where the first argument to each task template
   // denotes the period of the respective tasks.
   task speedEst = speedEst(500ms)
-  task frontLeft = frontRearDistance(500ms, 0.0 - 1.0, usMaxRange)
-  task frontRight = frontRearDistance(500ms, 0.0 - 1.0, usMaxRange)
-  task frontCenter = frontRearDistance(500ms, 0.0 - 1.0, tofMaxRange)
+  task frontLeft = frontRearDistance(500ms, 0.0 - 1.0, usMaxRange, 10)
+  task frontRight = frontRearDistance(500ms, 0.0 - 1.0, usMaxRange, 10)
+  task frontCenter = frontRearDistance(500ms, 0.0 - 1.0, tofMaxRange, 5)
   task rearLeft = frontRearDistance(500ms, 1.0, usMaxRange)
   task rearRight = frontRearDistance(500ms, 1.0, usMaxRange)
   task leftSide = sideDistance(500ms)
