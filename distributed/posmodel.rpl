@@ -19,7 +19,7 @@ const usMaxAngle : Float = 0.4363323129985824
 const tofMaxRange : Float = 1.25
 const tofMaxAngle : Float = 0.2617993877991494
 const maxDistance : Float = 10.0
-const maxSteer : Float = 0.349
+const maxSteer : Float = 20.0 * pi / 180.0
 const wheelbase : Float = 0.35
 
 const zeroOffset : Offset = { angle = 0.0, distance = 0.0, direction = 0.0 }
@@ -164,6 +164,18 @@ def cmpFloatTimestamp(l : TSV(Float), r : TSV(Float)) : Int {
   return acc
 }
 
+def cmpFloatTsvValue(l : TSV(Float), r : TSV(Float)) : Int {
+  var acc = 0
+  cond acc if value(l) > value(r) {
+    acc = 1
+  } else {
+    cond acc if value(l) < value(r) {
+      acc = negInt(1)
+    } else {}
+  }
+  return acc
+}
+
 def maxFloatTimestamp(tsvs : [TSV(Float)]) : TSV(Float) {
   var acc = tsvs[0]
   loop acc for tsv in tsvs {
@@ -229,7 +241,7 @@ model speedModel(tsvs : [TSV(Float)]) : Float {
   return v
 }
 
-def takeNMostRecent(a : [TSV(Float)], n : Int) : [TSV(Float)] {
+def takeNMostRecentFloat(a : [TSV(Float)], n : Int) : [TSV(Float)] {
   a = sort(cmpFloatTimestamp, a)
   cond a if gtInt(|a|, n) {
     var res = []
@@ -252,6 +264,20 @@ def expectedFloat(d : Dist(Float)) : Float {
   return dist
 }
 
+def printFloats(obs : [TSV(Float)]) : Unit {
+  cond if gtInt(|obs|, 0) {
+    print("[(")
+    loop for tsv in obs {
+      print(intToString(timestamp(tsv)))
+      print(",")
+      print(floatToString(value(tsv)))
+      print(")")
+      print("; ")
+    }
+    printLn("]")
+  } else {}
+}
+
 template speedEst(period : Int) {
   input lspeed : Float
   input rspeed : Float
@@ -265,6 +291,7 @@ template speedEst(period : Int) {
     obs = sort(cmpFloatTimestamp, concat(lObs, rObs))
     infer speedModel(obs) particles 1000 to d
     write d to speed
+    printFloats(obs)
     printLn(floatToString(expectedFloat(d)))
   }
 }
@@ -334,24 +361,9 @@ def cmpFloat(l : Float, r : Float) : Int {
 
 def medianOfLastThreeFloatTsv(tsvs : [TSV(Float)]) : Float {
   var n = |tsvs|
-  var a = value(tsvs[subInt(n, 3)])
-  var b = value(tsvs[subInt(n, 2)])
-  var c = value(tsvs[subInt(n, 1)])
-  var res = 0.0
-  cond res if a < b {
-    cond res if b < c {
-      res = b
-    } else {
-      res = c
-    }
-  } else {
-    cond res if a < c {
-      res = a
-    } else {
-      res = c
-    }
-  }
-  return res
+  var lastThree = [tsvs[subInt(n, 3)], tsvs[subInt(n, 2)], tsvs[subInt(n, 1)]]
+  var sorted = sort(cmpFloatTsvValue, lastThree)
+  return value(sorted[1])
 }
 
 def allOutOfRange(distanceObs : [TSV(Float)], maxRange : Float) : Bool {
@@ -407,23 +419,25 @@ template frontRearDistance(period : Int, dir : Float, maxRange : Float) {
     read distObs to obs
     read steeringAngleObs to saObs
     read speedEst to speed
-    acc.lastObs = takeNMostRecent(concat(acc.lastObs, obs), 10)
+    acc.lastObs = takeNMostRecentFloat(concat(acc.lastObs, obs), 10)
     acc.lastSpeed = maxDistFloatTimestamp(acc.lastSpeed, speed)
     cond if geqInt(|acc.lastObs|, 3) {
       infer frontRearDistanceModel(acc.lastObs, saObs, acc.lastSpeed, maxRange, dir)
         particles 1000
         to d
       write d to distEst
+      printFloats(acc.lastObs)
       printLn(floatToString(expectedFloat(d)))
     } else {}
   }
 }
 
 model sideDistanceModel(distObs : [TSV(Float)], maxSensorRange : Float) : Float {
-  cond res if allOutOfRange(distObs, maxSensorRange) {
+  var m = medianOfLastThreeFloatTsv(distObs)
+  cond res if m > maxSensorRange {
     res = maxSensorRange
   } else {
-    res = medianOfLastThreeFloatTsv(distObs)
+    res = m
   }
   return res
 }
@@ -436,11 +450,12 @@ template sideDistance(period : Int) {
     sdelay period
     read distObs to obs
     cond lastObs if gtInt(|obs|, 0) {
-      lastObs = takeNMostRecent(concat(lastObs, obs), 3)
+      lastObs = takeNMostRecentFloat(concat(lastObs, obs), 3)
     } else {}
     cond if geqInt(|lastObs|, 3) {
       infer sideDistanceModel(lastObs, tofMaxRange) particles 1000 to d
       write d to distEst
+      printFloats(lastObs)
       printLn(floatToString(expectedFloat(d)))
     } else {}
   }
@@ -547,26 +562,30 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float
   sample sigma ~ Gamma(0.5, 1.0)
   sample v ~ value(speedEst)
 
-  // We assume the most recent steering angle is the current steering angle. We
-  // compute this based on the observed behavior of the wheels when given
-  // different steering inputs.
-  // NOTE(larshum, 2023-05-23): We swap the sign of the steering angle because
-  // the y-axis of the map is inverted (the upper left corner of the PNG is
-  // (0,0)).
-  cond sa if value(saObs) > 0.0 {
-    sa = 0.03 - degToRad(value(saObs)) / maxSteer * 0.186
+  // We assume the current steering angle is normally distributed around the
+  // most recently observed steering angle input signal. As the steering angle
+  // is reported in degrees, we translate it to radians and, through the use of
+  // observation data, we estimate the true steering of the car.
+  cond steerCoeff if value(saObs) > 0.0 {
+    steerCoeff = 0.186
   } else {
-    sa = 0.03 + degToRad(value(saObs)) / maxSteer * 0.243
+    steerCoeff = 0.243
   }
+  var steerRate = degToRad(value(saObs)) / maxSteer
+  sample sa ~ Gaussian(0.03 - steerRate * steerCoeff, steerCoeff * 0.02)
+
   var turnRadius = wheelbase / tan(sa)
   cond turnRadius if turnRadius < 0.0 {
     turnRadius = 0.0 - turnRadius
   } else {}
 
-  // NOTE(larshum, 2023-05-25): We always consider sensor data from the sides.
-  // For the front and rear sensors, we ignore the data if the estimated
-  // distance between the sensors is too large, as we cannot rely on such
-  // observations for the sound-based sensors.
+  // NOTE(larshum, 2023-05-25): We always consider sensor data from the
+  // time-of-flight (light-based) sensors, as these seem to be accurate in any
+  // situation where they are within their maximum range. The ultrasonic
+  // sensors do not work well when looking at a wall from an angle. Therefore,
+  // we ignore these sensors unless the difference between the distance
+  // observed by the respective pairs of ultrasonic sensors (front and rear) at
+  // our estimated current position is sufficiently small.
   var sensorData : [SensorData] = [
     { ofs = sideLeftOffset, obs = lEst, maxRange = tofMaxRange, maxAngle = tofMaxAngle },
     { ofs = sideRightOffset, obs = rEst, maxRange = tofMaxRange, maxAngle = tofMaxAngle },
@@ -677,15 +696,17 @@ model brakeDistanceModel(m : RoomMap, pos : TSV(Dist(Pos)), speed : TSV(Dist(Flo
     direction = p.direction
   }
 
-  // Compute the distance needed to brake if we start now.
-  // TODO: tune this for the physical car.
-  var brakeDist = 1.0
+  // NOTE(larshum, 2023-06-16): We use the below formula to estimate the
+  // distance needed to decelerate to a stationary state. The formula is
+  // adapted for when the car is driving at or near its maximum speed.
+  // It will likely overestimate the distance needed when the speed is below
+  // max, which is intentional.
+  var brakeDist = v / maxSpeed * 0.4
 
   // Compute the distance until the car crashes given that it keeps driving in
   // its current direction.
   var inBounds : Pos -> Bool = carWithinRoomBounds(m)
-  // TODO: choose the cone angle with more care here...
-  var crashDist = estimateDistance(zeroOffset, 0.25, currPos, inBounds)
+  var crashDist = estimateDistance(zeroOffset, 0.1, currPos, inBounds)
   return crashDist - brakeDist
 }
 
@@ -716,8 +737,6 @@ template brakeEstimate(period : Int, safetyMargin : Float) {
     speed = tsv(0, initSpeed),
     pos = tsv(0, d)
   }
-  // Wait a while until our first estimation, as the first position estimates
-  // are highly inaccurate.
   sdelay 5s
   loop acc {
     read pos to posEst
