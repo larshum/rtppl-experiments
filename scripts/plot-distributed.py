@@ -55,6 +55,7 @@ inputs = {
     "pos": read_pos_dists("pos-posEst"),
     "front-left": read_float_dists("frontLeft-distEst"),
     "front-right": read_float_dists("frontRight-distEst"),
+    "front-center": read_float_dists("frontCenter-distEst"),
     "rear-left": read_float_dists("rearLeft-distEst"),
     "rear-right": read_float_dists("rearRight-distEst"),
     "left": read_float_dists("leftSide-distEst"),
@@ -79,7 +80,8 @@ ts_slider = Slider(
 rax = fig.add_axes([0.85, 0.8, 0.15, 0.15])
 dist_buttons = RadioButtons (
     rax,
-    ("front-left", "front-right", "rear-left", "rear-right", "left", "right", "speed"),
+    ("front-left", "front-right", "front-center", "rear-left", "rear-right",
+     "left", "right", "speed"),
 )
 
 def choose_closest_after_timestamp(s, ts):
@@ -139,19 +141,21 @@ def update(ts, label):
         idx = 3
     elif label == "front-right":
         idx = 4
-    elif label == "rear-left":
+    elif label == "front-center":
         idx = 5
-    elif label == "rear-right":
+    elif label == "rear-left":
         idx = 6
-    elif label == "left":
+    elif label == "rear-right":
         idx = 7
-    elif label == "right":
+    elif label == "left":
         idx = 8
-    elif label == "speed":
+    elif label == "right":
         idx = 9
+    elif label == "speed":
+        idx = 10
     else:
         print(f"Unknown label: {label}")
-    maxvs = [0, 0, 0, 4.0, 4.0, 4.0, 4.0, 2.0, 2.0, 0.8]
+    maxvs = [0, 0, 0, 4.0, 4.0, 1.5, 4.0, 4.0, 1.5, 1.5, 0.8]
     max_val = maxvs[idx]
     laxs.set_ylabel("probability")
     if tv is not None:
