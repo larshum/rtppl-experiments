@@ -24,7 +24,7 @@ const wheelbase : Float = 0.35
 
 // NOTE(larshum, 2023-06-16): This is where we define the initial position of
 // the car, which we assume is known beforehand.
-const initPos : Pos = { x = 2.68, y = 3.7, direction = 1.5*pi }
+const initPos : Pos = { x = 0.6, y = 5.6, direction = 1.5*pi }
 
 const zeroOffset : Offset = { angle = 0.0, distance = 0.0, direction = 0.0 }
 const frontLeftOffset : Offset = {
@@ -277,6 +277,7 @@ template speedEst(period : Int) {
     cond if gtInt(|obs|, 0) {
       infer speedModel(obs) particles 1000 to d
       write d to speed
+      printLogicalTime()
       printFloats(obs)
       printLn(floatToString(expectedFloat(d)))
     } else {}
@@ -413,6 +414,7 @@ template frontRearDistance(period : Int, dir : Float, maxRange : Float, nobs : I
         particles 1000
         to d
       write d to distEst
+      printLogicalTime()
       printFloats(acc.lastObs)
       printLn(floatToString(expectedFloat(d)))
     } else {}
@@ -437,6 +439,7 @@ template sideDistance(period : Int) {
     cond if geqInt(|lastObs|, 3) {
       infer sideDistanceModel(lastObs, tofMaxRange) particles 1000 to d
       write d to distEst
+      printLogicalTime()
       printFloats(lastObs)
       printLn(floatToString(expectedFloat(d)))
     } else {}
@@ -625,6 +628,30 @@ def printPos(p : Pos) : Unit {
   printLn(floatToString(p.direction))
 }
 
+def printDistFloats(msg : String, dists : [TSV(Dist(Float))]) : Unit {
+  print(msg)
+  print(": [")
+  loop for d in dists {
+    print(intToString(timestamp(d)))
+    print(",")
+    print(floatToString(expectedFloat(value(d))))
+    print("; ")
+  }
+  printLn("]")
+}
+
+def printFloats(msg : String, dists : [TSV(Float)]) : Unit {
+  print(msg)
+  print(": [")
+  loop for d in dists {
+    print(intToString(timestamp(d)))
+    print(",")
+    print(floatToString(value(d)))
+    print("; ")
+  }
+  printLn("]")
+}
+
 template positionEstimate(period : Int) {
   input frontLeft : Dist(Float)
   input frontRight : Dist(Float)
@@ -657,6 +684,16 @@ template positionEstimate(period : Int) {
     read right to rEst
     read speed to speedEst
     read steeringAngle to saObs
+    printLogicalTime()
+    printDistFloats("frontLeft", flEst)
+    printDistFloats("frontRight", frEst)
+    printDistFloats("frontCenter", fcEst)
+    printDistFloats("rearLeft", rlEst)
+    printDistFloats("rearRight", rrEst)
+    printDistFloats("leftSide", lEst)
+    printDistFloats("rightSide", rEst)
+    printFloats("steeringAngle", concat([acc.sa], saObs))
+    printDistFloats("speed", concat([acc.speed], speedEst))
     acc.sa = maxFloatTimestamp(concat([acc.sa], saObs))
     acc.speed = maxDistFloatTimestamp(acc.speed, speedEst)
     infer positionModel(m, acc.d, flEst, frEst, fcEst, rlEst, rrEst, lEst,
@@ -728,6 +765,8 @@ template brakeEstimate(period : Int, safetyMargin : Float) {
     acc.speed = maxDistFloatTimestamp(acc.speed, speedEst)
     infer brakeDistanceModel(m, acc.pos, acc.speed) particles 1000 to d
     cond if medianValue(samples d) < safetyMargin {
+      print("Sending brake signal at timestamp = ")
+      printLogicalTime()
       write 0.0 to brake
     } else {}
     sdelay period
