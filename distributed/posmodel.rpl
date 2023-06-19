@@ -546,7 +546,7 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float
     steerCoeff = 0.243
   }
   var steerRate = degToRad(value(saObs)) / maxSteer
-  sample sa ~ Gaussian(0.03 - steerRate * steerCoeff, steerCoeff * 0.02)
+  sample sa ~ Gaussian(0.03 - steerRate * steerCoeff, steerRate * 0.05)
 
   var turnRadius = wheelbase / tan(sa)
   cond turnRadius if turnRadius < 0.0 {
