@@ -182,19 +182,25 @@ model initSpeedModel() : Float {
   return 0.0
 }
 
-// NOTE(larshum, 2023-06-15): The car is considered stationary if our last
-// observed speed is zero.
+// NOTE(larshum, 2023-06-15): The car is considered stationary if all our
+// observed speeds are zero.
 def carIsStationary(tsvs : [TSV(Float)]) : Bool {
-  return gtInt(|tsvs|, 0) && value(tsvs[subInt(|tsvs|,1)]) == 0.0
+  var stationary = true
+  loop stationary for tsv in tsvs {
+    cond stationary if value(tsv) != 0.0 {
+      stationary = false
+    } else {}
+  }
+  return gtInt(|tsvs|, 0) && stationary
 }
 
 // NOTE(larshum, 2023-06-15): The car is considered to be driving at maximum
-// speed if all observed speeds are non-zero, given that we made at least one
-// new observation.
+// speed if all observed speeds are significantly above zero, chosen based on
+// real data.
 def carAtMaxSpeed(tsvs : [TSV(Float)]) : Bool {
   var maxSpeed = true
   loop maxSpeed for tsv in tsvs {
-    cond maxSpeed if value(tsv) == 0.0 {
+    cond maxSpeed if value(tsv) <= 45.0 {
       maxSpeed = false
     } else {}
   }
@@ -220,10 +226,10 @@ model speedModel(tsvs : [TSV(Float)]) : Float {
       // speed, which we estimated based on measurement on the car.
       sample v ~ Gaussian(0.69, 0.05)
     } else {
-      // NOTE(larshum, 2023-06-15): In case the last value is not zero, we
-      // assume the car is accelerating. We have no idea what the speed is,
-      // so we make it uniformly distributed around what we believe is the
-      // max speed of the car.
+      // NOTE(larshum, 2023-06-19): In case we observed at least one speed at
+      // or close to zero, we are uncertain about the actual speed of the car.
+      // Therefore, we use a unfiorm distribution in our belief of the true
+      // range of speeds of the car.
       sample v ~ Uniform(0.0, maxSpeed)
     }
   }
