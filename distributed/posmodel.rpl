@@ -536,6 +536,27 @@ def smallRearAngle(m : RoomMap, p : Pos) : Bool {
   return abs(ld - rd) / maxFloat(ld, rd) > 0.2
 }
 
+// NOTE(larshum, 2023-06-20): We assume the current steering angle is normally
+// distributed around the most recently observed steering angle input signal.
+// As the steering angle is reported in degrees, we translate it to radians
+// and, based on observed data, we estimate the true steering of the car.
+model estimateSteering(saObs : Float) : {sa : Float, turnRadius : Float} {
+  cond steerCoeff if saObs > 0.0 {
+    steerCoeff = 0.186
+  } else {
+    steerCoeff = 0.243
+  }
+  var steerRate = degToRad(saObs) / maxSteer
+  sample sa ~ Gaussian(0.03 - steerRate * steerCoeff, steerRate * 0.05)
+
+  var tr = wheelbase / tan(sa)
+  cond tr if tr < 0.0 {
+    tr = 0.0 - tr
+  } else {}
+
+  return {sa = sa, turnRadius = tr}
+}
+
 model positionModel(m : RoomMap, prior : TSV(Dist(Pos)),
                     flEst : [TSV(Dist(Float))], frEst : [TSV(Dist(Float))],
                     fcEst : [TSV(Dist(Float))], rlEst : [TSV(Dist(Float))],
@@ -547,22 +568,9 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)),
   sample sigma ~ Gamma(0.5, 1.0)
   sample v ~ value(speedEst)
 
-  // We assume the current steering angle is normally distributed around the
-  // most recently observed steering angle input signal. As the steering angle
-  // is reported in degrees, we translate it to radians and, through the use of
-  // observation data, we estimate the true steering of the car.
-  cond steerCoeff if value(saObs) > 0.0 {
-    steerCoeff = 0.186
-  } else {
-    steerCoeff = 0.243
-  }
-  var steerRate = degToRad(value(saObs)) / maxSteer
-  sample sa ~ Gaussian(0.03 - steerRate * steerCoeff, steerRate * 0.05)
-
-  var turnRadius = wheelbase / tan(sa)
-  cond turnRadius if turnRadius < 0.0 {
-    turnRadius = 0.0 - turnRadius
-  } else {}
+  var steer = estimateSteering(value(saObs))
+  var sa = steer.sa
+  var turnRadius = steer.turnRadius
 
   // NOTE(larshum, 2023-05-25): We always consider sensor data from the
   // time-of-flight (light-based) sensors, as these seem to be accurate in any
@@ -725,17 +733,64 @@ template positionEstimate(period : Int) {
   }
 }
 
-model brakeDistanceModel(m : RoomMap, pos : TSV(Dist(Pos)), speed : TSV(Dist(Float))) : Float {
+def estimateDistanceOnCurve(ofs : Offset, p : Pos, inBounds : Pos -> Bool,
+                            turnRadius : Float, steeringAngle : Float) : Float {
+  var res = 0.0
+  cond res if steeringAngle == 0.0 {
+    res = estimateDistance(ofs, 0.0, p, inBounds)
+  } else {
+    var d = p.direction
+    var eps = 0.1
+    var circumference = turnRadius * turnRadius * pi
+    var acc = {d = 0.0, p = p}
+    // NOTE(larshum, 2023-06-20): We estimate when the car will crash into a
+    // wall, assuming it keeps driving with the current steering angle, by
+    // traversing the circumference of the circle along which it travels. To
+    // ensure termination, we stop after a full lap around the circle.
+    loop acc while inBounds(acc.p) && res < circumference {
+      var rate = acc.d / turnRadius
+      cond pnext if steeringAngle < 0.0 {
+        pnext = { x = p.x + turnRadius * (sin(d) - sin(d - rate))
+                , y = p.y + turnRadius * (cos(d - rate) - cos(d))
+                , direction = d - rate }
+      } else {
+        pnext = { x = p.x + turnRadius * (sin(d + rate) - sin(d))
+                , y = p.y + turnRadius * (cos(d) - cos(d + rate))
+                , direction = d + rate }
+      }
+      acc = {d = d + eps, p = pnext}
+    }
+    cond res if inBounds(acc.p) {
+      res = maxDistance
+    } else {
+      res = acc.d
+    }
+  }
+  return res
+}
+
+model brakeDistanceModel(m : RoomMap, pos : TSV(Dist(Pos)), saObs : TSV(Float),
+                         speed : TSV(Dist(Float))) : Float {
   // NOTE(larshum, 2023-06-19): Estimate the current position based on our most
-  // recent estimates of the position and the speed.
+  // recent estimates of the position and the speed, as well as the most
+  // recently observed steering angle.
   sample p ~ value(pos)
   sample v ~ value(speed)
   var dist = v * timestampToSeconds(subInt(0, timestamp(pos)))
+
   var currPos = {
     x = p.x + dist * cos(p.direction),
     y = p.y + dist * sin(p.direction),
     direction = p.direction
   }
+
+  var steer = estimateSteering(value(saObs))
+  var sa = steer.sa
+  var turnRadius = steer.turnRadius
+
+  var crashDist = 0.0
+  var inBounds : Pos -> Bool = carWithinRoomBounds(m)
+  crashDist = estimateDistanceOnCurve(frontCenterOffset, currPos, inBounds, turnRadius, sa)
 
   // NOTE(larshum, 2023-06-16): We use the below formula to estimate the
   // distance needed to decelerate to a stationary state. The formula is
@@ -744,11 +799,6 @@ model brakeDistanceModel(m : RoomMap, pos : TSV(Dist(Pos)), speed : TSV(Dist(Flo
   // max, which is intentional.
   var brakeDist = v / maxSpeed * 0.4
 
-  // NOTE(larshum, 2023-06-19): Compute the distance until the car crashes
-  // given that it keeps driving in its current direction. We compute the
-  // distance relative to the central front sensor of the car.
-  var inBounds : Pos -> Bool = carWithinRoomBounds(m)
-  var crashDist = estimateDistance(frontCenterOffset, 0.0, currPos, inBounds)
   return crashDist - brakeDist
 }
 
@@ -782,24 +832,29 @@ def printDistPos(msg : String, dists : [TSV(Dist(Pos))]) : Unit {
 template brakeEstimate(period : Int, safetyMargin : Float) {
   input pos : Dist(Pos)
   input speed : Dist(Float)
+  input steeringAngle : Float
   output brake : Float
   var m : RoomMap = readRoomMap ()
   infer initialPositionModel() particles 1000 to d
   infer initSpeedModel() particles 1000 to initSpeed
   var acc = {
     speed = tsv(0, initSpeed),
+    sa = tsv(0, 0.0),
     pos = tsv(0, d)
   }
   sdelay 5s
   loop acc {
     read pos to posEst
     read speed to speedEst
+    read steeringAngle to saObs
     printLogicalTime()
     printDistPos("pos", concat([acc.pos], posEst))
+    printFloats("steering angle", concat([acc.sa], saObs))
     printDistFloats("speed", concat([acc.speed], speedEst))
     acc.pos = maxDistPosTimestamp(acc.pos, posEst)
+    acc.sa = maxFloatTimestamp(concat([acc.sa], saObs))
     acc.speed = maxDistFloatTimestamp(acc.speed, speedEst)
-    infer brakeDistanceModel(m, acc.pos, acc.speed) particles 100 to d
+    infer brakeDistanceModel(m, acc.pos, acc.sa, acc.speed) particles 100 to d
     var mv = medianValue(samples d)
     printLn(floatToString(mv))
     cond if mv < safetyMargin {
@@ -887,6 +942,7 @@ system {
 
   // Brake estimation inputs
   speedEst.speed -> brake.speed
+  steeringAngle -> brake.steeringAngle
   pos.posEst -> brake.pos
 
   brake.brake -> brake
