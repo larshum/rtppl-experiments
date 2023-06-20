@@ -473,14 +473,19 @@ def estimateDistance(ofs : Offset, coneAngle : Float, p : Pos,
     p1.x = p1.x + eps * cos(p1.direction)
     p1.y = p1.y + eps * sin(p1.direction)
     acc.p1 = p1
-    var p2 = acc.p2
-    p2.x = p2.x + eps * cos(p2.direction)
-    p2.y = p2.y + eps * sin(p2.direction)
-    acc.p2 = p2
-    var p3 = acc.p3
-    p3.x = p3.x + eps * cos(p3.direction)
-    p3.y = p3.y + eps * sin(p3.direction)
-    acc.p3 = p3
+    cond acc if coneAngle == 0.0 {
+      acc.p2 = p1
+      acc.p3 = p1
+    } else {
+      var p2 = acc.p2
+      p2.x = p2.x + eps * cos(p2.direction)
+      p2.y = p2.y + eps * sin(p2.direction)
+      acc.p2 = p2
+      var p3 = acc.p3
+      p3.x = p3.x + eps * cos(p3.direction)
+      p3.y = p3.y + eps * sin(p3.direction)
+      acc.p3 = p3
+    }
     acc.d = acc.d + eps
   }
   return acc.d
@@ -536,7 +541,7 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)),
                     fcEst : [TSV(Dist(Float))], rlEst : [TSV(Dist(Float))],
                     rrEst : [TSV(Dist(Float))], lEst : [TSV(Dist(Float))],
                     rEst : [TSV(Dist(Float))], speedEst : TSV(Dist(Float)),
-                    saObs : TSV(Float)) : Pos {
+                    saObs : TSV(Float), relTime : Int) : Pos {
 
   sample posPrev ~ value(prior)
   sample sigma ~ Gamma(0.5, 1.0)
@@ -602,7 +607,7 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)),
     }
   }
 
-  var dist = v * timestampToSeconds(subInt(0, timestamp(prior)))
+  var dist = v * timestampToSeconds(subInt(relTime, timestamp(prior)))
   var pos = computePos(posPrev, dist, turnRadius, sa)
   cond if not(carWithinRoomBounds(m, pos)) {
     degenerate
@@ -640,7 +645,7 @@ def printDistFloats(msg : String, dists : [TSV(Dist(Float))]) : Unit {
   loop for d in dists {
     print(intToString(timestamp(d)))
     print(",")
-    print(floatToString(expectedFloat(value(d))))
+    //print(floatToString(expectedFloat(value(d))))
     print("; ")
   }
   printLn("]")
@@ -658,7 +663,7 @@ def printFloats(msg : String, dists : [TSV(Float)]) : Unit {
   printLn("]")
 }
 
-template positionEstimate(period : Int) {
+template positionEstimate(period : Int, lookahead : Int) {
   input frontLeft : Dist(Float)
   input frontRight : Dist(Float)
   input frontCenter : Dist(Float)
@@ -669,26 +674,26 @@ template positionEstimate(period : Int) {
   input speed : Dist(Float)
   input steeringAngle : Float
   output posEst : Dist(Pos)
-  var posBudget : Int = subInt(period, 100ms)
+  var posBudget : Int = subInt(period, 200ms)
   var m : RoomMap = readRoomMap()
   infer initialPositionModel() particles 1 to d
   infer initSpeedModel() particles 1000 to initSpeed
   var acc = {
     d = tsv(0, d),
-    sa = tsv(0, 0.0),
-    speed = tsv(0, initSpeed)
+    sa = tsv(lookahead, 0.0),
+    speed = tsv(lookahead, initSpeed)
   }
   // NOTE(larshum, 2023-06-20): We run the first iteration of the positioning
   // model with a fixed number of particles rather than using a budget. This
   // ensures that it does not produce an excessive number of particles, which
   // is highly likely due to how quick estimations are prior to receiving any
   // inputs.
-  infer positionModel(m, acc.d, [], [], [], [], [], [], [], acc.speed, acc.sa)
+  infer positionModel(m, acc.d, [], [], [], [], [], [], [], acc.speed, acc.sa, lookahead)
     particles 1000
     to d
-  acc.d = tsv(0, d)
+  acc.d = tsv(lookahead, d)
   loop acc {
-    write value(acc.d) to posEst
+    write value(acc.d) to posEst offset lookahead
     sdelay period
     read frontLeft to flEst
     read frontRight to frEst
@@ -712,11 +717,11 @@ template positionEstimate(period : Int) {
     acc.sa = maxFloatTimestamp(concat([acc.sa], saObs))
     acc.speed = maxDistFloatTimestamp(acc.speed, speedEst)
     infer positionModel(m, acc.d, flEst, frEst, fcEst, rlEst, rrEst,
-                        lEst, rEst, acc.speed, acc.sa)
+                        lEst, rEst, acc.speed, acc.sa, lookahead)
       budget posBudget
       to d
     printPos(expectedPos(d))
-    acc.d = tsv(0, d)
+    acc.d = tsv(lookahead, d)
   }
 }
 
@@ -743,7 +748,7 @@ model brakeDistanceModel(m : RoomMap, pos : TSV(Dist(Pos)), speed : TSV(Dist(Flo
   // given that it keeps driving in its current direction. We compute the
   // distance relative to the central front sensor of the car.
   var inBounds : Pos -> Bool = carWithinRoomBounds(m)
-  var crashDist = estimateDistance(frontCenterOffset, 0.1, currPos, inBounds)
+  var crashDist = estimateDistance(frontCenterOffset, 0.0, currPos, inBounds)
   return crashDist - brakeDist
 }
 
@@ -764,7 +769,7 @@ def printDistPos(msg : String, dists : [TSV(Dist(Pos))]) : Unit {
     print("  ")
     print(intToString(timestamp(d)))
     print(",")
-    printPos(expectedPos(value(d)))
+    //printPos(expectedPos(value(d)))
   }
   printLn("]")
 }
@@ -826,6 +831,11 @@ system {
   // inputs.
   actuator brake : Float
 
+  // Actuator for the current position estimates. We write the current position
+  // estimates to this actuator, but we do not expect any true actions to be
+  // taken directly from this value.
+  actuator posEst : Dist(Pos)
+
   // Tasks
   // We define periodic tasks, where the first argument to each task template
   // denotes the period of the respective tasks.
@@ -837,8 +847,9 @@ system {
   task rearRight = frontRearDistance(500ms, 1.0, usMaxRange)
   task leftSide = sideDistance(500ms)
   task rightSide = sideDistance(500ms)
-  task pos = positionEstimate(1s)
-  task brake = brakeEstimate(250ms, 0.1)
+  task currPos = positionEstimate(1s, 0s)
+  task nextPos = positionEstimate(1s, 1s)
+  task brake = brakeEstimate(250ms, 0.2)
 
   // Speed estimation inputs
   speedLeft -> speedEst.lspeed
@@ -870,19 +881,30 @@ system {
   sideRight -> rightSide.distObs
 
   // Position estimation inputs
-  frontLeft.distEst -> pos.frontLeft
-  frontRight.distEst -> pos.frontRight
-  frontCenter.distEst -> pos.frontCenter
-  rearLeft.distEst -> pos.rearLeft
-  rearRight.distEst -> pos.rearRight
-  leftSide.distEst -> pos.left
-  rightSide.distEst -> pos.right
-  speedEst.speed -> pos.speed
-  steeringAngle -> pos.steeringAngle
+  frontLeft.distEst -> currPos.frontLeft
+  frontRight.distEst -> currPos.frontRight
+  frontCenter.distEst -> currPos.frontCenter
+  rearLeft.distEst -> currPos.rearLeft
+  rearRight.distEst -> currPos.rearRight
+  leftSide.distEst -> currPos.left
+  rightSide.distEst -> currPos.right
+  speedEst.speed -> currPos.speed
+  steeringAngle -> currPos.steeringAngle
+
+  frontLeft.distEst -> nextPos.frontLeft
+  frontRight.distEst -> nextPos.frontRight
+  frontCenter.distEst -> nextPos.frontCenter
+  rearLeft.distEst -> nextPos.rearLeft
+  rearRight.distEst -> nextPos.rearRight
+  leftSide.distEst -> nextPos.left
+  rightSide.distEst -> nextPos.right
+  speedEst.speed -> nextPos.speed
+  steeringAngle -> nextPos.steeringAngle
 
   // Brake estimation inputs
   speedEst.speed -> brake.speed
-  pos.posEst -> brake.pos
+  nextPos.posEst -> brake.pos
 
+  currPos.posEst -> posEst
   brake.brake -> brake
 }
