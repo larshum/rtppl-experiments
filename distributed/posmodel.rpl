@@ -584,22 +584,6 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)),
     { ofs = sideRightOffset, obs = rEst, maxRange = tofMaxRange, maxAngle = tofMaxAngle },
     { ofs = frontCenterOffset, obs = fcEst, maxRange = tofMaxRange, maxAngle = tofMaxAngle }
   ]
-  cond sensorData if smallFrontAngle(m, posPrev) {
-    sensorData = push(sensorData,
-    { ofs = frontLeftOffset, obs = flEst, maxRange = usMaxRange, maxAngle = usMaxAngle }
-    )
-    sensorData = push(sensorData,
-    { ofs = frontRightOffset, obs = frEst, maxRange = usMaxRange, maxAngle = usMaxAngle }
-    )
-  } else {}
-  cond sensorData if smallRearAngle(m, posPrev) {
-    sensorData = push(sensorData,
-    { ofs = rearLeftOffset, obs = rlEst, maxRange = usMaxRange, maxAngle = usMaxAngle }
-    )
-    sensorData = push(sensorData,
-    { ofs = rearRightOffset, obs = rrEst, maxRange = usMaxRange, maxAngle = usMaxAngle }
-    )
-  } else {}
 
   var inBounds : Pos -> Bool = withinRoomBounds(m)
   loop for s in sensorData {
