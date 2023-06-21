@@ -720,18 +720,20 @@ template positionEstimate(period : Int) {
 def estimateDistanceOnCurve(ofs : Offset, p : Pos, inBounds : Pos -> Bool,
                             turnRadius : Float, steeringAngle : Float) : Float {
   var res = 0.0
+  // NOTE(larshum, 2023-06-21): If the steering angle is estimated as exactly
+  // zero, we estimate the distance in a straight line. Otherwise, we traverse
+  // the circle along which the car will drive.
   cond res if steeringAngle == 0.0 {
     res = estimateDistance(ofs, 0.0, p, inBounds)
   } else {
     var d = p.direction
     var eps = 0.1
-    var circumference = turnRadius * turnRadius * pi
     var acc = {d = 0.0, p = p}
     // NOTE(larshum, 2023-06-20): We estimate when the car will crash into a
     // wall, assuming it keeps driving with the current steering angle, by
     // traversing the circumference of the circle along which it travels. To
     // ensure termination, we stop after a full lap around the circle.
-    loop acc while inBounds(acc.p) && res < circumference {
+    loop acc while inBounds(acc.p) && acc.d < maxDistance {
       var rate = acc.d / turnRadius
       cond pnext if steeringAngle < 0.0 {
         pnext = { x = p.x + turnRadius * (sin(d) - sin(d - rate))
@@ -742,7 +744,7 @@ def estimateDistanceOnCurve(ofs : Offset, p : Pos, inBounds : Pos -> Bool,
                 , y = p.y + turnRadius * (cos(d) - cos(d + rate))
                 , direction = d + rate }
       }
-      acc = {d = d + eps, p = pnext}
+      acc = {d = acc.d + eps, p = pnext}
     }
     cond res if inBounds(acc.p) {
       res = maxDistance
@@ -838,7 +840,7 @@ template brakeEstimate(period : Int, safetyMargin : Float) {
     acc.pos = maxDistPosTimestamp(acc.pos, posEst)
     acc.sa = maxFloatTimestamp(concat([acc.sa], saObs))
     acc.speed = maxDistFloatTimestamp(acc.speed, speedEst)
-    infer brakeDistanceModel(m, acc.pos, acc.sa, acc.speed) particles 100 to d
+    infer brakeDistanceModel(m, acc.pos, acc.sa, acc.speed) particles 99 to d
     var mv = medianValue(samples d)
     printLn(floatToString(mv))
     cond if mv < safetyMargin {
