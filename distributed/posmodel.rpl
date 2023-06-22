@@ -382,7 +382,7 @@ model frontRearDistanceModel(distanceObs : [TSV(Float)],
     cond res if minValue(saObs) == 0.0 && maxValue(saObs) == 0.0 {
       sample v ~ value(speedEst)
       sample m ~ Gaussian(dir * v, 0.1)
-      sample b ~ Uniform(0.0, maxDistance)
+      sample b ~ Uniform(0.0, 1.1 * maxSensorRange)
       sample sigma ~ Gamma(1.0, 1.0)
       loop for tsv in distanceObs {
         var ts = timestampToSeconds(timestamp(tsv))
