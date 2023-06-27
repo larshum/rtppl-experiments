@@ -223,7 +223,7 @@ model speedModel(tsvs : [TSV(Float)]) : Float {
     cond v if carAtMaxSpeed(tsvs) {
       // NOTE(larshum, 2023-06-16): We assume the car is driving at its max
       // speed, which we estimated based on measurement on the car.
-      sample v ~ Gaussian(0.65, 0.05)
+      sample v ~ Gaussian(0.64, 0.1)
     } else {
       // NOTE(larshum, 2023-06-19): In case we observed at least one speed at
       // or close to zero, we are uncertain about the actual speed of the car.
