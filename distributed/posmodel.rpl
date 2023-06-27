@@ -542,12 +542,12 @@ def smallRearAngle(m : RoomMap, p : Pos) : Bool {
 // and, based on observed data, we estimate the true steering of the car.
 model estimateSteering(saObs : Float) : {sa : Float, turnRadius : Float} {
   cond steerCoeff if saObs > 0.0 {
-    steerCoeff = 0.186
+    steerCoeff = 0.2
   } else {
     steerCoeff = 0.243
   }
   var steerRate = degToRad(saObs) / maxSteer
-  sample sa ~ Gaussian(0.03 - steerRate * steerCoeff, steerRate * 0.05)
+  sample sa ~ Gaussian(0.03 - steerRate * steerCoeff, steerRate * 0.15)
 
   var tr = wheelbase / tan(sa)
   cond tr if tr < 0.0 {
