@@ -282,7 +282,7 @@ template speedEst(period : Int) {
     cond if gtInt(|obs|, 0) {
       infer speedModel(obs) particles 1000 to d
       write d to speed
-      printLogicalTime()
+      printTimes()
       printFloats(obs)
       printLn(floatToString(expectedFloat(d)))
     } else {}
@@ -419,7 +419,7 @@ template frontRearDistance(period : Int, dir : Float, maxRange : Float, nobs : I
         particles 1000
         to d
       write d to distEst
-      printLogicalTime()
+      printTimes()
       printFloats(acc.lastObs)
       printLn(floatToString(expectedFloat(d)))
     } else {}
@@ -444,7 +444,7 @@ template sideDistance(period : Int) {
     cond if geqInt(|lastObs|, 3) {
       infer sideDistanceModel(lastObs, tofMaxRange) particles 1000 to d
       write d to distEst
-      printLogicalTime()
+      printTimes()
       printFloats(lastObs)
       printLn(floatToString(expectedFloat(d)))
     } else {}
@@ -696,7 +696,7 @@ template positionEstimate(period : Int) {
     read right to rEst
     read speed to speedEst
     read steeringAngle to saObs
-    printLogicalTime()
+    printTimes()
     printDistFloats("frontLeft", flEst)
     printDistFloats("frontRight", frEst)
     printDistFloats("frontCenter", fcEst)
@@ -833,7 +833,7 @@ template brakeEstimate(period : Int, safetyMargin : Float) {
     read pos to posEst
     read speed to speedEst
     read steeringAngle to saObs
-    printLogicalTime()
+    printTimes()
     printDistPos("pos", concat([acc.pos], posEst))
     printFloats("steering angle", concat([acc.sa], saObs))
     printDistFloats("speed", concat([acc.speed], speedEst))
