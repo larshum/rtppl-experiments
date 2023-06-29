@@ -80,8 +80,8 @@ ts_slider = Slider(
 rax = fig.add_axes([0.85, 0.8, 0.15, 0.15])
 dist_buttons = RadioButtons (
     rax,
-    ("front-left", "front-right", "front-center", "rear-left", "rear-right",
-     "left", "right", "speed"),
+    ("speed", "front-left", "front-right", "front-center", "rear-left",
+     "rear-right", "left", "right"),
 )
 
 def choose_closest_after_timestamp(s, ts):
@@ -137,25 +137,25 @@ def update(ts, label):
 
     # Update distribution plots to the one most recently occuring prior to
     # or at the given timestamp (relative to the first position estimation).
-    if label == "front-left":
+    if label == "speed":
         idx = 3
-    elif label == "front-right":
+    elif label == "front-left":
         idx = 4
-    elif label == "front-center":
+    elif label == "front-right":
         idx = 5
-    elif label == "rear-left":
+    elif label == "front-center":
         idx = 6
-    elif label == "rear-right":
+    elif label == "rear-left":
         idx = 7
-    elif label == "left":
+    elif label == "rear-right":
         idx = 8
-    elif label == "right":
+    elif label == "left":
         idx = 9
-    elif label == "speed":
+    elif label == "right":
         idx = 10
     else:
         print(f"Unknown label: {label}")
-    maxvs = [0, 0, 0, 4.0, 4.0, 1.5, 4.0, 4.0, 1.5, 1.5, 0.8]
+    maxvs = [0, 0, 0, 0.8, 4.0, 4.0, 1.5, 4.0, 4.0, 1.5, 1.5]
     max_val = maxvs[idx]
     laxs.set_ylabel("probability")
     if tv is not None:
