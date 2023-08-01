@@ -307,7 +307,7 @@ def takeNMostRecent(a : [TSV(Float)], n : Int) : [TSV(Float)] {
   return a
 }
 
-template frontRearDistance(period : Int, dir : Float) {
+template FrontRearDistance(period : Int, dir : Float) {
   input distObs : Float
   input steeringAngleObs : Float
   input speedEst : Dist(Float)
@@ -342,7 +342,7 @@ model sideDistanceModel(distObs : [TSV(Float)], maxSensorRange : Float) : Float 
   return res
 }
 
-template sideDistance(period : Int) {
+template SideDistance(period : Int) {
   input distObs : Float
   output distEst : Dist(Float)
   var lastObs = []
@@ -527,7 +527,7 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), flEst : [TSV(Dist(Float
   return pos
 }
 
-template positionEstimate(period : Int) {
+template PositionEstimate(period : Int) {
   input frontLeft : Float
   input frontRight : Float
   input rearLeft : Float
@@ -672,7 +672,7 @@ def medianValue(x : {s : [Float], w : [Float]}) : Float {
 // much earlier (in terms of distance) the emergency brake is activated. For
 // example, if the car has to brake in 0.1m and the safety margin is 0.2m, the
 // task will signal to activate the emergency brakes.
-template brakeEstimate(period : Int, safetyMargin : Float) {
+template BrakeEstimate(period : Int, safetyMargin : Float) {
   input pos : Dist(Pos)
   input lspeed : Float
   input rspeed : Float
@@ -723,8 +723,8 @@ system {
   // Brake actuator - determines whether to brake or not
   actuator brake : Float
 
-  task est = positionEstimate(1s)
-  task brake = brakeEstimate(250ms, 0.1)
+  task est = PositionEstimate(1s)
+  task brake = BrakeEstimate(250ms, 0.1)
 
   speedLeft -> est.lspeed
   speedRight -> est.rspeed

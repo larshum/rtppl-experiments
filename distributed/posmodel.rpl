@@ -269,7 +269,7 @@ def printFloats(obs : [TSV(Float)]) : Unit {
   printLn("]")
 }
 
-template speedEst(period : Int) {
+template SpeedEst(period : Int) {
   input lspeed : Float
   input rspeed : Float
   output speed : Dist(Float)
@@ -397,7 +397,7 @@ model frontRearDistanceModel(distanceObs : [TSV(Float)],
   return clamp(res, 0.0, maxSensorRange)
 }
 
-template frontRearDistance(period : Int, dir : Float, maxRange : Float, nobs : Int) {
+template FrontRearDistance(period : Int, dir : Float, maxRange : Float, nobs : Int) {
   input distObs : Float
   input steeringAngleObs : Float
   input speedEst : Dist(Float)
@@ -431,7 +431,7 @@ model sideDistanceModel(distObs : [TSV(Float)], maxSensorRange : Float) : Float 
   return clamp(m, 0.0, maxSensorRange)
 }
 
-template sideDistance(period : Int) {
+template SideDistance(period : Int) {
   input distObs : Float
   output distEst : Dist(Float)
   var lastObs = []
@@ -655,7 +655,7 @@ def printFloats(msg : String, dists : [TSV(Float)]) : Unit {
   printLn("]")
 }
 
-template positionEstimate(period : Int) {
+template PositionEstimate(period : Int) {
   input frontLeft : Dist(Float)
   input frontRight : Dist(Float)
   input frontCenter : Dist(Float)
@@ -815,7 +815,7 @@ def printDistPos(msg : String, dists : [TSV(Dist(Pos))]) : Unit {
 // much earlier (in terms of distance) the emergency brake is activated. For
 // example, if the car has to brake in 0.1m and the safety margin is 0.2m, the
 // task will signal to activate the emergency brakes.
-template brakeEstimate(period : Int, safetyMargin : Float) {
+template BrakeEstimate(period : Int, safetyMargin : Float) {
   input pos : Dist(Pos)
   input speed : Dist(Float)
   input steeringAngle : Float
@@ -875,16 +875,16 @@ system {
   // Tasks
   // We define periodic tasks, where the first argument to each task template
   // denotes the period of the respective tasks.
-  task speedEst = speedEst(500ms)
-  task frontLeft = frontRearDistance(500ms, 0.0 - 1.0, usMaxRange, 10)
-  task frontRight = frontRearDistance(500ms, 0.0 - 1.0, usMaxRange, 10)
-  task frontCenter = frontRearDistance(500ms, 0.0 - 1.0, tofMaxRange, 5)
-  task rearLeft = frontRearDistance(500ms, 1.0, usMaxRange, 10)
-  task rearRight = frontRearDistance(500ms, 1.0, usMaxRange, 10)
-  task leftSide = sideDistance(500ms)
-  task rightSide = sideDistance(500ms)
-  task pos = positionEstimate(1s)
-  task brake = brakeEstimate(250ms, 0.2)
+  task speedEst = SpeedEst(500ms)
+  task frontLeft = FrontRearDistance(500ms, 0.0 - 1.0, usMaxRange, 10)
+  task frontRight = FrontRearDistance(500ms, 0.0 - 1.0, usMaxRange, 10)
+  task frontCenter = FrontRearDistance(500ms, 0.0 - 1.0, tofMaxRange, 5)
+  task rearLeft = FrontRearDistance(500ms, 1.0, usMaxRange)
+  task rearRight = FrontRearDistance(500ms, 1.0, usMaxRange)
+  task leftSide = SideDistance(500ms)
+  task rightSide = SideDistance(500ms)
+  task pos = PositionEstimate(1s)
+  task brake = BrakeEstimate(250ms, 0.2)
 
   // Speed estimation inputs
   speedLeft -> speedEst.lspeed
