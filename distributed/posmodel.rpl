@@ -872,8 +872,8 @@ system {
   task frontLeft = FrontRearDistance(500ms, 0.0 - 1.0, usMaxRange, 10) priority 1
   task frontRight = FrontRearDistance(500ms, 0.0 - 1.0, usMaxRange, 10) priority 1
   task frontCenter = FrontRearDistance(500ms, 0.0 - 1.0, tofMaxRange, 5) priority 1
-  task rearLeft = FrontRearDistance(500ms, 1.0, usMaxRange) priority 1
-  task rearRight = FrontRearDistance(500ms, 1.0, usMaxRange) priority 1
+  task rearLeft = FrontRearDistance(500ms, 1.0, usMaxRange, 10) priority 1
+  task rearRight = FrontRearDistance(500ms, 1.0, usMaxRange, 10) priority 1
   task leftSide = SideDistance(500ms) priority 1
   task rightSide = SideDistance(500ms) priority 1
   task pos = PositionEstimate(1s) priority 10
