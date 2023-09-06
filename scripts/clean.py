@@ -48,7 +48,7 @@ for _, srcs in data["actuator_ins"].items():
     for src in srcs:
         clear(f"{src}")
 for task in data["tasks"]:
-    clear(f"{task}-logfile.txt")
+    clear(f"{task['id']}-logfile.txt")
 
 # These files should be removed when the '-a' flag is set, but otherwise we
 # don't touch them.
@@ -56,8 +56,11 @@ if args.a:
     for src, _ in data["sensor_outs"].items():
         clear(f"{src}")
     for task in data["tasks"]:
-        clear(f"{task}")
-        clear(f"{task}.mc")
+        clear(f"{task['id']}")
+        clear(f"{task['id']}.mc")
+        clear(f"{task['id']}.config")
+        clear(f"{task['id']}.collect")
+        clear(f"{task['id']}.logfile")
     for dst, _ in data["actuator_ins"].items():
         clear(f"{dst}")
     clear(nwfile)

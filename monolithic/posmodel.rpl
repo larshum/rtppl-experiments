@@ -325,7 +325,6 @@ template FrontRearDistance(period : Int, dir : Float) {
     lastSpeed = maxFloatTimestamp(concat([lastSpeed], speed))
     cond if (minValue(saObs) == 0.0 && maxValue(saObs) == 0.0) || geqInt(|lastObs|, 3) {
       infer frontRearDistanceModel(lastObs, saObs, lastSpeed, usMaxRange, dir)
-        particles 1000
         to d
       write d to distEst
     } else {}
@@ -353,7 +352,7 @@ template SideDistance(period : Int) {
       lastObs = takeNMostRecent(concat(lastObs, obs), 3)
     } else {}
     cond if geqInt(|lastObs|, 3) {
-      infer sideDistanceModel(lastObs, tofMaxRange) particles 1000 to d
+      infer sideDistanceModel(lastObs, tofMaxRange) to d
       write d to distEst
     } else {}
   }
@@ -542,7 +541,7 @@ template PositionEstimate(period : Int) {
   var posBudget : Int = subInt(period, 500ms)
   var m : RoomMap = readRoomMap()
   var blocks : [Coordinate] = findFreeRoomCoordinates(m)
-  infer initialPositionModel(blocks) particles 1000 to d
+  infer initialPositionModel(blocks) to d
   var acc = {
     speed = tsv(0, 0.0),
     d = tsv(0, d),
@@ -575,31 +574,31 @@ template PositionEstimate(period : Int) {
       acc.flobs = takeNMostRecent(concat(acc.flobs, flObs), 10)
     } else {}
     infer frontRearDistanceModel(acc.flobs, [acc.sa], acc.speed, usMaxRange, 0.0 - 1.0)
-      particles 1000 to flEst
+      to flEst
     read frontRight to frObs
     cond acc if gtInt(|frObs|, 0) {
       acc.frobs = takeNMostRecent(concat(acc.frobs, frObs), 10)
     } else {}
     infer frontRearDistanceModel(acc.frobs, [acc.sa], acc.speed, usMaxRange, 0.0 - 1.0)
-      particles 1000 to frEst
+      to frEst
     read rearLeft to rlObs
     cond acc if gtInt(|rlObs|, 0) {
       acc.rlobs = takeNMostRecent(concat(acc.rlobs, rlObs), 10)
     } else {}
     infer frontRearDistanceModel(acc.rlobs, [acc.sa], acc.speed, usMaxRange, 1.0)
-      particles 1000 to rlEst
+      1 to rlEst
     read rearRight to rrObs
     cond acc if gtInt(|rrObs|, 0) {
       acc.rrobs = takeNMostRecent(concat(acc.rrobs, rrObs), 10)
     } else {}
     infer frontRearDistanceModel(acc.rrobs, [acc.sa], acc.speed, usMaxRange, 1.0)
-      particles 1000 to rrEst
+      to rrEst
     read left to lObs
     cond acc if gtInt(|lObs|, 0) {
       acc.lobs = takeNMostRecent(concat(acc.lobs, lObs), 3)
     } else {}
     cond lEst if geqInt(|acc.lobs|, 3) {
-      infer sideDistanceModel(acc.lobs, tofMaxRange) particles 1000 to d
+      infer sideDistanceModel(acc.lobs, tofMaxRange) to d
       lEst = [tsv(0, d)]
     } else {
       lEst = []
@@ -610,14 +609,14 @@ template PositionEstimate(period : Int) {
     } else {
     }
     cond rEst if geqInt(|acc.robs|, 3) {
-      infer sideDistanceModel(acc.robs, tofMaxRange) particles 1000 to d
+      infer sideDistanceModel(acc.robs, tofMaxRange) to d
       rEst = [tsv(0, d)]
     } else {
       rEst = []
     }
     infer positionModel(m, acc.d, [tsv(0, flEst)], [tsv(0, frEst)], [tsv(0, rlEst)], [tsv(0, rrEst)], lEst, rEst,
                              acc.speed, acc.sa)
-      budget posBudget to d
+      to d
     acc.d = tsv(0, d)
   }
 }
@@ -679,7 +678,7 @@ template BrakeEstimate(period : Int, safetyMargin : Float) {
   output brake : Float
   var m : RoomMap = readRoomMap ()
   var blocks : [Coordinate] = findFreeRoomCoordinates(m)
-  infer initialPositionModel(blocks) particles 1000 to d
+  infer initialPositionModel(blocks) to d
   var acc = {
     speed = tsv(0, 0.0),
     pos = tsv(0, d)
@@ -698,7 +697,7 @@ template BrakeEstimate(period : Int, safetyMargin : Float) {
     } else {
       acc.speed = tsv(0, maxSpeed)
     }
-    infer brakeDistanceModel(m, acc.pos, acc.speed) particles 1000 to d
+    infer brakeDistanceModel(m, acc.pos, acc.speed) to d
     cond if medianValue(samples d) < safetyMargin {
       write 0.0 to brake
     } else {}
@@ -723,8 +722,8 @@ system {
   // Brake actuator - determines whether to brake or not
   actuator brake : Float
 
-  task est = PositionEstimate(1s)
-  task brake = BrakeEstimate(250ms, 0.1)
+  task est = PositionEstimate(1s) priority 1
+  task brake = BrakeEstimate(250ms, 0.1) priority 1
 
   speedLeft -> est.lspeed
   speedRight -> est.rspeed

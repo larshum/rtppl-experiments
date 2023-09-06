@@ -99,9 +99,9 @@ for src, dsts in nw["relays"].items():
 for dst, srcs in nw["actuator_ins"].items():
     pass
 for task in nw["tasks"]:
-    cmd = [f"./{task}", f"../{map_file}"]
+    cmd = [f"./{task['id']}", f"../{map_file}"]
     print(cmd)
-    taskLog = open(f"{task}-logfile.txt", "w+")
+    taskLog = open(f"{task['id']}-logfile.txt", "w+")
     procs.append(subprocess.Popen(cmd, stdout=taskLog, env={"OCAMLRUNPARAM": "b"}))
 
 if args.replay:

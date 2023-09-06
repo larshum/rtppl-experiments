@@ -24,7 +24,7 @@ const wheelbase : Float = 0.35
 
 // NOTE(larshum, 2023-06-16): This is where we define the initial position of
 // the car, which we assume is known beforehand.
-const initPos : Pos = { x = 0.6, y = 5.6, direction = 1.5*pi }
+const initPos : Pos = { x = 1.5, y = 11.1, direction = 1.5*pi }
 
 const frontLeftOffset : Offset = {
   angle = 0.0-0.209639845874, distance = 0.240260275535, direction = 0.0
@@ -273,14 +273,14 @@ template SpeedEst(period : Int) {
   input lspeed : Float
   input rspeed : Float
   output speed : Dist(Float)
-  infer initSpeedModel() particles 1000 to initSpeed
+  infer initSpeedModel() to initSpeed
   loop {
     sdelay period
     read lspeed to lObs
     read rspeed to rObs
     obs = sort(cmpFloatTimestamp, concat(lObs, rObs))
     cond if gtInt(|obs|, 0) {
-      infer speedModel(obs) particles 1000 to d
+      infer speedModel(obs) to d
       write d to speed
       printTimes()
       printFloats(obs)
@@ -402,7 +402,7 @@ template FrontRearDistance(period : Int, dir : Float, maxRange : Float, nobs : I
   input steeringAngleObs : Float
   input speedEst : Dist(Float)
   output distEst : Dist(Float)
-  infer initSpeedModel() particles 1000 to initSpeed
+  infer initSpeedModel() to initSpeed
   var acc = {
     lastSpeed = tsv(0, initSpeed),
     lastObs = []
@@ -416,7 +416,6 @@ template FrontRearDistance(period : Int, dir : Float, maxRange : Float, nobs : I
     acc.lastSpeed = maxDistFloatTimestamp(acc.lastSpeed, speed)
     cond if geqInt(|acc.lastObs|, 3) {
       infer frontRearDistanceModel(acc.lastObs, saObs, acc.lastSpeed, maxRange, dir)
-        particles 1000
         to d
       write d to distEst
       printTimes()
@@ -442,7 +441,7 @@ template SideDistance(period : Int) {
       lastObs = takeNMostRecentFloat(concat(lastObs, obs), 3)
     } else {}
     cond if geqInt(|lastObs|, 3) {
-      infer sideDistanceModel(lastObs, tofMaxRange) particles 1000 to d
+      infer sideDistanceModel(lastObs, tofMaxRange) to d
       write d to distEst
       printTimes()
       printFloats(lastObs)
@@ -582,7 +581,9 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)),
   var sensorData : [SensorData] = [
     { ofs = sideLeftOffset, obs = lEst, maxRange = tofMaxRange, maxAngle = tofMaxAngle },
     { ofs = sideRightOffset, obs = rEst, maxRange = tofMaxRange, maxAngle = tofMaxAngle },
-    { ofs = frontCenterOffset, obs = fcEst, maxRange = tofMaxRange, maxAngle = tofMaxAngle }
+    { ofs = frontCenterOffset, obs = fcEst, maxRange = tofMaxRange, maxAngle = tofMaxAngle },
+    { ofs = frontLeftOffset, obs = flEst, maxRange = usMaxRange, maxAngle = usMaxAngle },
+    { ofs = frontRightOffset, obs = frEst, maxRange = usMaxRange, maxAngle = usMaxAngle }
   ]
 
   var inBounds : Pos -> Bool = withinRoomBounds(m)
@@ -666,22 +667,15 @@ template PositionEstimate(period : Int) {
   input speed : Dist(Float)
   input steeringAngle : Float
   output posEst : Dist(Pos)
-  var posBudget : Int = subInt(period, 200ms)
   var m : RoomMap = readRoomMap()
-  infer initialPositionModel() particles 1 to d
-  infer initSpeedModel() particles 1000 to initSpeed
+  infer initialPositionModel() to d
+  infer initSpeedModel() to initSpeed
   var acc = {
     d = tsv(0, d),
     sa = tsv(0, 0.0),
     speed = tsv(0, initSpeed)
   }
-  // NOTE(larshum, 2023-06-20): We run the first iteration of the positioning
-  // model with a fixed number of particles rather than using a budget. This
-  // ensures that it does not produce an excessive number of particles, which
-  // is highly likely due to how quick estimations are prior to receiving any
-  // inputs.
   infer positionModel(m, acc.d, [], [], [], [], [], [], [], acc.speed, acc.sa)
-    particles 1000
     to d
   acc.d = tsv(0, d)
   loop acc {
@@ -710,7 +704,6 @@ template PositionEstimate(period : Int) {
     acc.speed = maxDistFloatTimestamp(acc.speed, speedEst)
     infer positionModel(m, acc.d, flEst, frEst, fcEst, rlEst, rrEst,
                         lEst, rEst, acc.speed, acc.sa)
-      budget posBudget
       to d
     printPos(expectedPos(d))
     acc.d = tsv(0, d)
@@ -763,7 +756,7 @@ model brakeDistanceModel(m : RoomMap, pos : TSV(Dist(Pos)), saObs : TSV(Float),
   sample p ~ value(pos)
   sample v ~ value(speed)
   var dist = v * timestampToSeconds(subInt(0, timestamp(pos)))
-
+  // TODO: use more accurate direction (based on steering angle?)
   var currPos = {
     x = p.x + dist * cos(p.direction),
     y = p.y + dist * sin(p.direction),
@@ -805,7 +798,7 @@ def printDistPos(msg : String, dists : [TSV(Dist(Pos))]) : Unit {
     print("  ")
     print(intToString(timestamp(d)))
     print(",")
-    print("<pos>")
+    printPos(expectedPos(value(d)))
   }
   printLn("]")
 }
@@ -821,8 +814,8 @@ template BrakeEstimate(period : Int, safetyMargin : Float) {
   input steeringAngle : Float
   output brake : Float
   var m : RoomMap = readRoomMap ()
-  infer initialPositionModel() particles 1000 to d
-  infer initSpeedModel() particles 1000 to initSpeed
+  infer initialPositionModel() to d
+  infer initSpeedModel() to initSpeed
   var acc = {
     speed = tsv(0, initSpeed),
     sa = tsv(0, 0.0),
@@ -840,7 +833,7 @@ template BrakeEstimate(period : Int, safetyMargin : Float) {
     acc.pos = maxDistPosTimestamp(acc.pos, posEst)
     acc.sa = maxFloatTimestamp(concat([acc.sa], saObs))
     acc.speed = maxDistFloatTimestamp(acc.speed, speedEst)
-    infer brakeDistanceModel(m, acc.pos, acc.sa, acc.speed) particles 99 to d
+    infer brakeDistanceModel(m, acc.pos, acc.sa, acc.speed) to d
     var mv = medianValue(samples d)
     printLn(floatToString(mv))
     cond if mv < safetyMargin {
@@ -875,16 +868,16 @@ system {
   // Tasks
   // We define periodic tasks, where the first argument to each task template
   // denotes the period of the respective tasks.
-  task speedEst = SpeedEst(500ms)
-  task frontLeft = FrontRearDistance(500ms, 0.0 - 1.0, usMaxRange, 10)
-  task frontRight = FrontRearDistance(500ms, 0.0 - 1.0, usMaxRange, 10)
-  task frontCenter = FrontRearDistance(500ms, 0.0 - 1.0, tofMaxRange, 5)
-  task rearLeft = FrontRearDistance(500ms, 1.0, usMaxRange)
-  task rearRight = FrontRearDistance(500ms, 1.0, usMaxRange)
-  task leftSide = SideDistance(500ms)
-  task rightSide = SideDistance(500ms)
-  task pos = PositionEstimate(1s)
-  task brake = BrakeEstimate(250ms, 0.2)
+  task speedEst = SpeedEst(500ms) priority 1
+  task frontLeft = FrontRearDistance(500ms, 0.0 - 1.0, usMaxRange, 10) priority 1
+  task frontRight = FrontRearDistance(500ms, 0.0 - 1.0, usMaxRange, 10) priority 1
+  task frontCenter = FrontRearDistance(500ms, 0.0 - 1.0, tofMaxRange, 5) priority 1
+  task rearLeft = FrontRearDistance(500ms, 1.0, usMaxRange) priority 1
+  task rearRight = FrontRearDistance(500ms, 1.0, usMaxRange) priority 1
+  task leftSide = SideDistance(500ms) priority 1
+  task rightSide = SideDistance(500ms) priority 1
+  task pos = PositionEstimate(1s) priority 10
+  task brake = BrakeEstimate(250ms, 0.2) priority 10
 
   // Speed estimation inputs
   speedLeft -> speedEst.lspeed
