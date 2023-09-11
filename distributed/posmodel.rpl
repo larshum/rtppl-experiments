@@ -282,9 +282,9 @@ template SpeedEst(period : Int) {
     cond if gtInt(|obs|, 0) {
       infer speedModel(obs) to d
       write d to speed
-      printTimes()
-      printFloats(obs)
-      printLn(floatToString(expectedFloat(d)))
+      // printTimes()
+      // printFloats(obs)
+      // printLn(floatToString(expectedFloat(d)))
     } else {}
   }
 }
@@ -418,9 +418,9 @@ template FrontRearDistance(period : Int, dir : Float, maxRange : Float, nobs : I
       infer frontRearDistanceModel(acc.lastObs, saObs, acc.lastSpeed, maxRange, dir)
         to d
       write d to distEst
-      printTimes()
-      printFloats(acc.lastObs)
-      printLn(floatToString(expectedFloat(d)))
+      // printTimes()
+      // printFloats(acc.lastObs)
+      // printLn(floatToString(expectedFloat(d)))
     } else {}
   }
 }
@@ -443,9 +443,9 @@ template SideDistance(period : Int) {
     cond if geqInt(|lastObs|, 3) {
       infer sideDistanceModel(lastObs, tofMaxRange) to d
       write d to distEst
-      printTimes()
-      printFloats(lastObs)
-      printLn(floatToString(expectedFloat(d)))
+      // printTimes()
+      // printFloats(lastObs)
+      // printLn(floatToString(expectedFloat(d)))
     } else {}
   }
 }
@@ -690,22 +690,22 @@ template PositionEstimate(period : Int) {
     read right to rEst
     read speed to speedEst
     read steeringAngle to saObs
-    printTimes()
-    printDistFloats("frontLeft", flEst)
-    printDistFloats("frontRight", frEst)
-    printDistFloats("frontCenter", fcEst)
-    printDistFloats("rearLeft", rlEst)
-    printDistFloats("rearRight", rrEst)
-    printDistFloats("leftSide", lEst)
-    printDistFloats("rightSide", rEst)
-    printFloats("steeringAngle", concat([acc.sa], saObs))
-    printDistFloats("speed", concat([acc.speed], speedEst))
+    // printTimes()
+    // printDistFloats("frontLeft", flEst)
+    // printDistFloats("frontRight", frEst)
+    // printDistFloats("frontCenter", fcEst)
+    // printDistFloats("rearLeft", rlEst)
+    // printDistFloats("rearRight", rrEst)
+    // printDistFloats("leftSide", lEst)
+    // printDistFloats("rightSide", rEst)
+    // printFloats("steeringAngle", concat([acc.sa], saObs))
+    // printDistFloats("speed", concat([acc.speed], speedEst))
     acc.sa = maxFloatTimestamp(concat([acc.sa], saObs))
     acc.speed = maxDistFloatTimestamp(acc.speed, speedEst)
     infer positionModel(m, acc.d, flEst, frEst, fcEst, rlEst, rrEst,
                         lEst, rEst, acc.speed, acc.sa)
       to d
-    printPos(expectedPos(d))
+    // printPos(expectedPos(d))
     acc.d = tsv(0, d)
   }
 }
@@ -826,18 +826,18 @@ template BrakeEstimate(period : Int, safetyMargin : Float) {
     read pos to posEst
     read speed to speedEst
     read steeringAngle to saObs
-    printTimes()
-    printDistPos("pos", concat([acc.pos], posEst))
-    printFloats("steering angle", concat([acc.sa], saObs))
-    printDistFloats("speed", concat([acc.speed], speedEst))
+    // printTimes()
+    // printDistPos("pos", concat([acc.pos], posEst))
+    // printFloats("steering angle", concat([acc.sa], saObs))
+    // printDistFloats("speed", concat([acc.speed], speedEst))
     acc.pos = maxDistPosTimestamp(acc.pos, posEst)
     acc.sa = maxFloatTimestamp(concat([acc.sa], saObs))
     acc.speed = maxDistFloatTimestamp(acc.speed, speedEst)
     infer brakeDistanceModel(m, acc.pos, acc.sa, acc.speed) to d
     var mv = medianValue(samples d)
-    printLn(floatToString(mv))
+    // printLn(floatToString(mv))
     cond if mv < safetyMargin {
-      printLn("Sending brake signal")
+      // printLn("Sending brake signal")
       write 0.0 to brake
     } else {}
     sdelay period
