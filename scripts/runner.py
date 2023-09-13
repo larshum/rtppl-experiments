@@ -100,6 +100,11 @@ for dst, srcs in nw["actuator_ins"].items():
     pass
 for task in nw["tasks"]:
     cmd = [f"./{task['id']}", f"../{map_file}"]
+    # Put the configuration task on a separate core from the other tasks
+    if task['id'] == "config.task":
+        cmd = ["taskset", "-c", "1"] + cmd
+    else:
+        cmd = ["taskset", "-c", "2"] + cmd
     print(cmd)
     taskLog = open(f"{task['id']}-logfile.txt", "w+")
     procs.append(subprocess.Popen(cmd, stdout=taskLog, env={"OCAMLRUNPARAM": "b"}))
