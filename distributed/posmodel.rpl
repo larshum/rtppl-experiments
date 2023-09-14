@@ -788,7 +788,14 @@ def medianValue(x : {s : [Float], w : [Float]}) : Float {
     s = push(s, xs[i])
   }
   s = sort(cmpFloat, s)
-  return s[divInt(|s|, 2)]
+  var res = 0.0
+  cond res if eqInt(remInt(|s|, 2), 0) {
+    var mid = divInt(|s|, 2)
+    res = (s[mid] + s[subInt(mid, 1)]) / 2.0
+  } else {
+    res = s[divInt(|s|, 2)]
+  }
+  return res
 }
 
 def printDistPos(msg : String, dists : [TSV(Dist(Pos))]) : Unit {
