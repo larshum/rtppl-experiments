@@ -4,8 +4,7 @@ def read_network(file):
     with open(file) as f:
         data = json.loads(f.read())
 
-    # We ignore the brake task and any connections involving it
-    tasks = data["tasks"]
+    tasks = sorted(data["tasks"], key=lambda x: x["period"])
 
     # We only run the relay to deliver data between tasks
     relays = {}

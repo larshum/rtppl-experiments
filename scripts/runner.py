@@ -98,6 +98,8 @@ for src, dsts in nw["relays"].items():
     procs.append(subprocess.Popen(cmd))
 for dst, srcs in nw["actuator_ins"].items():
     pass
+
+priority = 99
 for task in nw["tasks"]:
     cmd = [f"./{task['id']}", f"../{map_file}"]
     # Put the configuration task on a separate core from the other tasks
@@ -107,7 +109,10 @@ for task in nw["tasks"]:
         cmd = ["taskset", "-c", "2"] + cmd
     print(cmd)
     taskLog = open(f"{task['id']}-logfile.txt", "w+")
-    procs.append(subprocess.Popen(cmd, stdout=taskLog, env={"OCAMLRUNPARAM": "b"}))
+    proc = subprocess.Popen(cmd, stdout=taskLog, env={"OCAMLRUNPARAM": "b"})
+    os.sched_setscheduler(proc.pid, os.SCHED_FIFO, os.sched_param(priority))
+    priority -= 1
+    procs.append(proc)
 
 if args.replay:
     os.chdir(original_path)
