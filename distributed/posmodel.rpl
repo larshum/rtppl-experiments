@@ -883,8 +883,8 @@ system {
   task rearRight = FrontRearDistance(500ms, 1.0, usMaxRange, 10) priority 2
   task leftSide = SideDistance(500ms) priority 1
   task rightSide = SideDistance(500ms) priority 1
-  task pos = PositionEstimate(1s) priority 167
-  task brake = BrakeEstimate(250ms, 0.2) priority 20
+  task pos = PositionEstimate(1s) priority 77
+  task brake = BrakeEstimate(250ms, 0.2) priority 10
 
   // Speed estimation inputs
   speedLeft -> speedEst.lspeed
