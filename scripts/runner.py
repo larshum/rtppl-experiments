@@ -9,6 +9,7 @@ import sys
 import time
 
 import network
+import mmio
 
 def replay_messages(replay_path, target_path, sensor_outputs):
     # Read the raw data from all sensor files
@@ -17,8 +18,8 @@ def replay_messages(replay_path, target_path, sensor_outputs):
         for dst in dsts:
             try:
                 with open(f"{replay_path}/{dst}", "rb") as f:
-                    dst_file = open(f"{target_path}/{dst}", "wb")
-                    msgs.append((dst_file, f.read()))
+                    dst_fd = mmio.open_file(f"{target_path}/{dst}")
+                    msgs.append((dst_fd, f.read()))
             except:
                 # Do not provide any data if the file was not found
                 pass
@@ -36,23 +37,20 @@ def replay_messages(replay_path, target_path, sensor_outputs):
     # Replay the raw data by sending it out in the order it was observed in
     start_time = time.time_ns()
     t0 = out_data[0][1]
-    for f, t1, payload in out_data:
+    for fd, t1, payload in out_data:
         exec_time = time.time_ns() - start_time
         t_delta = t1 - t0
         if exec_time < t_delta:
             time.sleep((t_delta - exec_time) / 1e9)
         msg = struct.pack("=qq", len(payload) + 8, start_time + t_delta) + payload
-        f.write(msg)
-        f.flush()
+        mmio.write_message(fd, msg)
 
     # Close the output files before quitting
-    for f, _, _ in out_data:
-        f.close()
+    fds = set([fd for fd, _, _ in out_data])
+    for fd in fds:
+        mmio.close_file(fd)
 
 procs = []
-
-if not os.path.isfile("relay"):
-    subprocess.run(["g++", "relay.cpp", "-std=c++17", "-o", "relay"])
 
 p = argparse.ArgumentParser()
 p.add_argument("-p", "--path", action="store", required=True)
@@ -93,7 +91,7 @@ os.chdir(path)
 for src, dsts in nw["sensor_outs"].items():
     pass
 for src, dsts in nw["relays"].items():
-    cmd = ["../relay", src] + dsts
+    cmd = ["python3", "../scripts/relay.py", src] + dsts
     print(cmd)
     procs.append(subprocess.Popen(cmd))
 for dst, srcs in nw["actuator_ins"].items():
