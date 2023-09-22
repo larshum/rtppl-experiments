@@ -11,6 +11,20 @@ import time
 import network
 import mmio
 
+def combine_tasks_with_core_mapping(tasks, task_to_core_map_file):
+    try:
+        with open(task_to_core_map_file, "r") as f:
+            ttcm = {}
+            for line in f.readlines():
+                [task, core] = line.strip().split(" ")
+                ttcm[task] = int(core)
+        for task in tasks:
+            task['core'] = ttcm[task['id']]
+    except FileNotFoundError:
+        for task in tasks:
+            task['core'] = 0
+    return tasks
+
 def replay_messages(replay_path, target_path, sensor_outputs):
     # Read the raw data from all sensor files
     msgs = []
@@ -97,14 +111,12 @@ for src, dsts in nw["relays"].items():
 for dst, srcs in nw["actuator_ins"].items():
     pass
 
+tasks = combine_tasks_with_core_mapping(nw["tasks"], "task-core-map.txt")
+
 priority = 99
-for task in nw["tasks"]:
+for task in tasks:
     cmd = [f"./{task['id']}", f"../{map_file}"]
-    # Put the configuration task on a separate core from the other tasks
-    if task['id'] == "config.task":
-        cmd = ["taskset", "-c", "1"] + cmd
-    else:
-        cmd = ["taskset", "-c", "2"] + cmd
+    cmd = ["taskset", "-c", f"{task['core']}"] + cmd
     print(cmd)
     taskLog = open(f"{task['id']}-logfile.txt", "w+")
     proc = subprocess.Popen(cmd, stdout=taskLog, env={"OCAMLRUNPARAM": "b"})

@@ -49,6 +49,7 @@ for _, srcs in data["actuator_ins"].items():
         clear(f"{src}")
 for task in data["tasks"]:
     clear(f"{task['id']}-logfile.txt")
+    try_remove(f"{task['id']}.collect")
     try_remove(f"{task['id']}.config")
 
 # These files should be removed when the '-a' flag is set, but otherwise we
@@ -59,9 +60,8 @@ if args.a:
     for task in data["tasks"]:
         clear(f"{task['id']}")
         clear(f"{task['id']}.mc")
-        clear(f"{task['id']}-config.in")
-        clear(f"{task['id']}-collect.out")
         clear(f"{task['id']}-logfile.txt")
     for dst, _ in data["actuator_ins"].items():
         clear(f"{dst}")
     clear(nwfile)
+    clear("task-core-map.txt")
