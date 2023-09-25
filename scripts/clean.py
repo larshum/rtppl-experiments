@@ -49,7 +49,7 @@ for _, srcs in data["actuator_ins"].items():
         clear(f"{src}")
 for task in data["tasks"]:
     clear(f"{task['id']}-logfile.txt")
-    clear(f"{task['id']}.collect")
+    try_remove(f"{task['id']}.collect")
 
 # These files should be removed when the '-a' flag is set, but otherwise we
 # don't touch them.
