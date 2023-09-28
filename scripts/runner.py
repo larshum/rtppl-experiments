@@ -32,7 +32,7 @@ def replay_messages(replay_path, target_path, sensor_outputs):
         for dst in dsts:
             try:
                 with open(f"{replay_path}/{dst}", "rb") as f:
-                    dst_fd = mmio.open_file(f"{target_path}/{dst}")
+                    dst_fd = mmio.open_file(f"{dst}")
                     msgs.append((dst_fd, f.read()))
             except:
                 # Do not provide any data if the file was not found
@@ -107,7 +107,7 @@ for src, dsts in nw["sensor_outs"].items():
 for src, dsts in nw["relays"].items():
     cmd = ["python3", "../scripts/relay.py", src] + dsts
     print(cmd)
-    procs.append(subprocess.Popen(cmd))
+    procs.append(subprocess.Popen(cmd, stderr=subprocess.DEVNULL))
 for dst, srcs in nw["actuator_ins"].items():
     pass
 

@@ -1,6 +1,7 @@
 import mmap
 import os
 import struct
+from multiprocessing import shared_memory
 
 BUFFER_SIZE = 2**20
 
@@ -8,66 +9,61 @@ buffers = {}
 
 def open_file(fname):
     global buffers
-    fd = os.open(fname, os.O_RDWR)
-    os.ftruncate(fd, BUFFER_SIZE)
-    buffers[fd] = mmap.mmap(fd, BUFFER_SIZE)
-    return fd
+    try:
+        shm = shared_memory.SharedMemory(name=fname, create=True, size=BUFFER_SIZE)
+    except:
+        shm = shared_memory.SharedMemory(name=fname)
+    buffers[shm] = 0
+    return shm
 
-def close_file(fd):
-    os.close(fd)
-    if fd in buffers:
-        buffers[fd].close()
-        buffers[fd] = None
+def close_file(shm):
+    shm.close()
+    if shm in buffers:
+        buffers[shm] = None
 
 # Attempt to read a message from the memory-mapped area and overwrite it with
 # zeros after reading.
-def read_message(fd):
-    mm = buffers[fd]
-    b = mm.read(8)
+def read_message(shm):
+    pos = buffers[shm]
+    b = shm.buf[pos:pos+8]
     sz, = struct.unpack("=q", b)
-    mm.seek(-8, os.SEEK_CUR)
     if sz == 0:
         return None
-    mm.write(bytearray(8))
-    if mm.tell() + sz >= mm.size():
-        n = mm.size() - mm.tell()
-        b1 = mm.read(n)
-        mm.seek(-n, os.SEEK_CUR)
-        mm.write(bytearray(n))
-        mm.seek(0, os.SEEK_SET)
-        b2 = mm.read(sz - n)
-        mm.seek(-(sz-n), os.SEEK_CUR)
-        mm.write(bytearray(sz-n))
+    shm.buf[pos:pos+8] = bytearray(8)
+    pos += 8
+    if pos + sz >= len(shm.buf):
+        n = len(shm.buf) - pos
+        b1 = shm.buf[pos:n]
+        shm.buf[pos:] = bytearray(n)
+        b2 = shm.buf[0:sz-n]
+        shm.buf[0:sz-n] = bytearray(sz-n)
+        buffers[shm] = sz-n
         return b1 + b2
     else:
-        b = mm.read(sz)
-        mm.seek(-sz, os.SEEK_CUR)
-        mm.write(bytearray(sz))
+        b = shm.buf[pos:pos+sz]
+        shm.buf[pos:pos+sz] = bytearray(sz)
+        buffers[shm] = pos+sz
         return b
 
-def read_messages(fd):
+def read_messages(shm):
     msgs = []
     while True:
-        msg = read_message(fd)
+        msg = read_message(shm)
         if msg is None:
             break
         msgs.append(msg)
     return msgs
 
-def write_message(fd, msg):
-    mm = buffers[fd]
-    sz_pos = mm.tell()
-    mm.seek(8, os.SEEK_CUR)
-    if mm.tell() + len(msg) >= mm.size():
-        n = mm.size() - mm.tell()
-        mm.write(msg[:n])
-        mm.seek(0, os.SEEK_SET)
-        mm.write(msg[n:])
+def write_message(shm, msg):
+    sz_pos = buffers[shm]
+    pos = sz_pos + 8
+    if pos + len(msg) >= len(shm.buf):
+        n = len(shm.buf) - pos
+        shm.buf[pos:n] = msg[:n]
+        shm.buf[0:] = msg[n:]
+        buffers[shm] = len(msg)-n
     else:
-        mm.write(msg)
-    new_pos = mm.tell()
-    mm.seek(sz_pos, os.SEEK_SET)
+        shm.buf[pos:pos+len(msg)] = msg
+        buffers[shm] = pos+len(msg)
     szbytes = struct.pack("=q", len(msg))
-    mm.write(szbytes)
-    mm.seek(new_pos)
-    mm.flush()
+    shm.buf[sz_pos:sz_pos+8] = szbytes
