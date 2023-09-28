@@ -27,15 +27,15 @@ def read_message(shm):
     pos = buffers[shm]
     b = shm.buf[pos:pos+8]
     sz, = struct.unpack("=q", b)
-    if sz == 0:
+    if sz <= 0:
         return None
     shm.buf[pos:pos+8] = bytearray(8)
     pos += 8
     if pos + sz >= len(shm.buf):
         n = len(shm.buf) - pos
-        b1 = shm.buf[pos:n]
+        b1 = bytes(shm.buf[pos:n])
         shm.buf[pos:] = bytearray(n)
-        b2 = shm.buf[0:sz-n]
+        b2 = bytes(shm.buf[0:sz-n])
         shm.buf[0:sz-n] = bytearray(sz-n)
         buffers[shm] = sz-n
         return b1 + b2
@@ -59,11 +59,11 @@ def write_message(shm, msg):
     pos = sz_pos + 8
     if pos + len(msg) >= len(shm.buf):
         n = len(shm.buf) - pos
-        shm.buf[pos:n] = msg[:n]
-        shm.buf[0:] = msg[n:]
+        shm.buf[pos:] = bytes(msg[:n])
+        shm.buf[0:len(msg)-n] = bytes(msg[n:])
         buffers[shm] = len(msg)-n
     else:
-        shm.buf[pos:pos+len(msg)] = msg
+        shm.buf[pos:pos+len(msg)] = bytes(msg)
         buffers[shm] = pos+len(msg)
     szbytes = struct.pack("=q", len(msg))
     shm.buf[sz_pos:sz_pos+8] = szbytes
