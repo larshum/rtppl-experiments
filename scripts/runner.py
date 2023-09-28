@@ -22,7 +22,7 @@ def combine_tasks_with_core_mapping(tasks, task_to_core_map_file):
             task['core'] = ttcm[task['id']]
     except FileNotFoundError:
         for task in tasks:
-            task['core'] = 0
+            task['core'] = 1
     return tasks
 
 def replay_messages(replay_path, target_path, sensor_outputs):
