@@ -14,11 +14,12 @@ def try_remove(f):
         pass
 
 def try_clear(f):
-    try:
-        with open(f, "w"):
+    if os.path.isfile(f):
+        try:
+            with open(f, "w"):
+                pass
+        except FileNotFoundError:
             pass
-    except FileNotFoundError:
-        pass
 
 p = argparse.ArgumentParser()
 p.add_argument("-p", "--path", action="store", required=True)
