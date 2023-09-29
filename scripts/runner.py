@@ -32,7 +32,7 @@ def replay_messages(replay_path, target_path, sensor_outputs):
         for dst in dsts:
             try:
                 with open(f"{replay_path}/{dst}", "rb") as f:
-                    dst_fd = mmio.open_file(f"{dst}")
+                    dst_fd = mmio.open_file(dst)
                     msgs.append((dst_fd, f.read()))
             except:
                 # Do not provide any data if the file was not found
@@ -102,17 +102,8 @@ if args.replay:
 
 original_path = os.getcwd()
 os.chdir(path)
-for src, dsts in nw["sensor_outs"].items():
-    pass
-for src, dsts in nw["relays"].items():
-    cmd = ["python3", "../scripts/relay.py", src] + dsts
-    print(cmd)
-    procs.append(subprocess.Popen(cmd, stderr=subprocess.DEVNULL))
-for dst, srcs in nw["actuator_ins"].items():
-    pass
 
 tasks = combine_tasks_with_core_mapping(nw["tasks"], "task-core-map.txt")
-
 priority = 99
 for task in tasks:
     cmd = [f"./{task['id']}", f"../{map_file}"]
@@ -128,6 +119,11 @@ if args.replay:
     os.chdir(original_path)
     replay_messages(args.replay, path, nw["sensor_outs"].items())
     time.sleep(1)
+    for proc in procs:
+        if proc.poll():
+            proc.kill()
+            proc.wait()
+            print(f"Process {proc.args} died: {proc.stdout}\n{proc.stderr}")
     handler(signal.SIGINT, None)
 else:
     while True:
