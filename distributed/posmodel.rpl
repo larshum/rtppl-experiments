@@ -275,7 +275,7 @@ template SpeedEst(period : Int) {
   output speed : Dist(Float)
   infer initSpeedModel() to initSpeed
   loop {
-    sdelay period
+    delay period
     read lspeed to lObs
     read rspeed to rObs
     obs = sort(cmpFloatTimestamp, concat(lObs, rObs))
@@ -408,7 +408,7 @@ template FrontRearDistance(period : Int, dir : Float, maxRange : Float, nobs : I
     lastObs = []
   }
   loop acc {
-    sdelay period
+    delay period
     read distObs to obs
     read steeringAngleObs to saObs
     read speedEst to speed
@@ -435,7 +435,7 @@ template SideDistance(period : Int) {
   output distEst : Dist(Float)
   var lastObs = []
   loop lastObs {
-    sdelay period
+    delay period
     read distObs to obs
     cond lastObs if gtInt(|obs|, 0) {
       lastObs = takeNMostRecentFloat(concat(lastObs, obs), 3)
@@ -680,7 +680,7 @@ template PositionEstimate(period : Int) {
   acc.d = tsv(0, d)
   loop acc {
     write value(acc.d) to posEst
-    sdelay period
+    delay period
     read frontLeft to flEst
     read frontRight to frEst
     read frontCenter to fcEst
@@ -828,7 +828,7 @@ template BrakeEstimate(period : Int, safetyMargin : Float) {
     sa = tsv(0, 0.0),
     pos = tsv(0, d)
   }
-  sdelay 5s
+  delay 5s
   loop acc {
     read pos to posEst
     read speed to speedEst
@@ -847,7 +847,7 @@ template BrakeEstimate(period : Int, safetyMargin : Float) {
       // printLn("Sending brake signal")
       write 0.0 to brake
     } else {}
-    sdelay period
+    delay period
   }
 }
 
