@@ -64,6 +64,12 @@ def replay_messages(replay_path, target_path, sensor_outputs):
     for fd in fds:
         mmio.close_file(fd)
 
+def store_debug_pos(debug_file):
+    shm, f = debug_file
+    msgs = mmio.read_messages(shm)
+    data = b''.join(msgs)
+    f.write(data)
+
 procs = []
 
 p = argparse.ArgumentParser()
@@ -71,12 +77,15 @@ p.add_argument("-p", "--path", action="store", required=True)
 p.add_argument("-m", "--map", action="store", required=True)
 p.add_argument("-r", "--replay", action="store")
 p.add_argument("-u", "--usage", action="store_true")
+p.add_argument("--record", action="store_true")
 args = p.parse_args()
 
 map_file = args.map
 path = args.path
 
 nw = network.read_network(f"{path}/network.json")
+
+debug_file = None
 
 def handler(sig, frame):
     print("Killing remaining processes")
@@ -93,6 +102,10 @@ def handler(sig, frame):
             proc.send_signal(signal.SIGKILL)
             proc.terminate()
             proc.wait()
+    if debug_file:
+        shm, f = debug_file
+        mmio.close_file(shm)
+        f.close()
     sys.exit(0)
 
 signal.signal(signal.SIGINT, handler)
@@ -126,7 +139,13 @@ if args.replay:
             print(f"Process {proc.args} died: {proc.stdout}\n{proc.stderr}")
     handler(signal.SIGINT, None)
 else:
+    if args.record:
+        shm = mmio.open_file("posDebug")
+        fd = open("posDebug", "wb")
+        debug_file = (shm, fd)
     while True:
+        if args.record:
+            store_debug_pos(debug_file)
         live = []
         for proc in procs:
             if proc.poll():

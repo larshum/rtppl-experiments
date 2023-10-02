@@ -829,6 +829,9 @@ system {
   sensor speedRight : Float // speed in RPM
   sensor steeringAngle : Float // steering in degrees
 
+  // Debug actuator, to which we write the position estimates
+  actuator posDebug : Dist(Pos)
+
   // Brake actuator
   // Writing a value to this actuator (the payload is irrelevant) starts the
   // emergency brakes, running the motor in reverse and preventing acceleration
@@ -869,6 +872,7 @@ system {
   speedEst.speed -> brake.speed
   steeringAngle -> brake.steeringAngle
   pos.posEst -> brake.pos
+  pos.posEst -> posDebug
 
   brake.brake -> brake
 }
