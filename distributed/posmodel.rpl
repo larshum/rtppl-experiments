@@ -47,10 +47,6 @@ const sideLeftOffset : Offset = {
 const sideRightOffset : Offset = {
   angle = 2.15879893034, distance = 0.126194294641, direction = pi / 2.0
 }
-const sensorOffsets : [Offset] = [
-  frontLeftOffset, frontRightOffset, rearLeftOffset, rearRightOffset,
-  sideLeftOffset, sideRightOffset
-]
 
 const inf : Float = 0.0 / 1.0
 const neginf : Float = 0.0 - inf
@@ -521,20 +517,6 @@ def computePos(p0 : Pos, l : Float, r : Float, steeringAngle : Float) : Pos {
   return p1
 }
 
-def smallFrontAngle(m : RoomMap, p : Pos) : Bool {
-  var inBounds : Pos -> Bool = withinRoomBounds(m)
-  var ld = estimateDistance(frontLeftOffset, 0.0, p, inBounds)
-  var rd = estimateDistance(frontRightOffset, 0.0, p, inBounds)
-  return abs(ld - rd) / maxFloat(ld, rd) > 0.2
-}
-
-def smallRearAngle(m : RoomMap, p : Pos) : Bool {
-  var inBounds : Pos -> Bool = withinRoomBounds(m)
-  var ld = estimateDistance(rearLeftOffset, 0.0, p, inBounds)
-  var rd = estimateDistance(rearRightOffset, 0.0, p, inBounds)
-  return abs(ld - rd) / maxFloat(ld, rd) > 0.2
-}
-
 // NOTE(larshum, 2023-06-20): We assume the current steering angle is normally
 // distributed around the most recently observed steering angle input signal.
 // As the steering angle is reported in degrees, we translate it to radians
@@ -557,9 +539,7 @@ model estimateSteering(saObs : Float) : {sa : Float, turnRadius : Float} {
 }
 
 model positionModel(m : RoomMap, prior : TSV(Dist(Pos)),
-                    flEst : [TSV(Dist(Float))], frEst : [TSV(Dist(Float))],
-                    fcEst : [TSV(Dist(Float))], rlEst : [TSV(Dist(Float))],
-                    rrEst : [TSV(Dist(Float))], lEst : [TSV(Dist(Float))],
+                    fcEst : [TSV(Dist(Float))], lEst : [TSV(Dist(Float))],
                     rEst : [TSV(Dist(Float))], speedEst : TSV(Dist(Float)),
                     saObs : TSV(Float)) : Pos {
 
@@ -581,9 +561,7 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)),
   var sensorData : [SensorData] = [
     { ofs = sideLeftOffset, obs = lEst, maxRange = tofMaxRange, maxAngle = tofMaxAngle },
     { ofs = sideRightOffset, obs = rEst, maxRange = tofMaxRange, maxAngle = tofMaxAngle },
-    { ofs = frontCenterOffset, obs = fcEst, maxRange = tofMaxRange, maxAngle = tofMaxAngle },
-    { ofs = frontLeftOffset, obs = flEst, maxRange = usMaxRange, maxAngle = usMaxAngle },
-    { ofs = frontRightOffset, obs = frEst, maxRange = usMaxRange, maxAngle = usMaxAngle }
+    { ofs = frontCenterOffset, obs = fcEst, maxRange = tofMaxRange, maxAngle = tofMaxAngle }
   ]
 
   var inBounds : Pos -> Bool = withinRoomBounds(m)
@@ -657,11 +635,7 @@ def printFloats(msg : String, dists : [TSV(Float)]) : Unit {
 }
 
 template PositionEstimate(period : Int) {
-  input frontLeft : Dist(Float)
-  input frontRight : Dist(Float)
   input frontCenter : Dist(Float)
-  input rearLeft : Dist(Float)
-  input rearRight : Dist(Float)
   input left : Dist(Float)
   input right : Dist(Float)
   input speed : Dist(Float)
@@ -675,36 +649,29 @@ template PositionEstimate(period : Int) {
     sa = tsv(0, 0.0),
     speed = tsv(0, initSpeed)
   }
-  infer positionModel(m, acc.d, [], [], [], [], [], [], [], acc.speed, acc.sa)
+  infer positionModel(m, acc.d, [], [], [], acc.speed, acc.sa)
     to d
   acc.d = tsv(0, d)
   loop acc {
     write value(acc.d) to posEst
     delay period
-    read frontLeft to flEst
-    read frontRight to frEst
     read frontCenter to fcEst
-    read rearLeft to rlEst
-    read rearRight to rrEst
     read left to lEst
     read right to rEst
     read speed to speedEst
     read steeringAngle to saObs
     // printTimes()
-    // printDistFloats("frontLeft", flEst)
-    // printDistFloats("frontRight", frEst)
     // printDistFloats("frontCenter", fcEst)
-    // printDistFloats("rearLeft", rlEst)
-    // printDistFloats("rearRight", rrEst)
     // printDistFloats("leftSide", lEst)
     // printDistFloats("rightSide", rEst)
     // printFloats("steeringAngle", concat([acc.sa], saObs))
     // printDistFloats("speed", concat([acc.speed], speedEst))
     acc.sa = maxFloatTimestamp(concat([acc.sa], saObs))
     acc.speed = maxDistFloatTimestamp(acc.speed, speedEst)
-    infer positionModel(m, acc.d, flEst, frEst, fcEst, rlEst, rrEst,
-                        lEst, rEst, acc.speed, acc.sa)
-      to d
+    infer positionModel(m, acc.d, fcEst, lEst, rEst, acc.speed, acc.sa) to d
+    // infer positionModel(m, acc.d, flEst, frEst, fcEst, rlEst, rrEst,
+    //                     lEst, rEst, acc.speed, acc.sa)
+    //   to d
     // printPos(expectedPos(d))
     acc.d = tsv(0, d)
   }
@@ -853,11 +820,7 @@ template BrakeEstimate(period : Int, safetyMargin : Float) {
 
 system {
   // Distance sensors (payload contains distance in meters)
-  sensor frontLeft : Float
-  sensor frontRight : Float
   sensor frontCenter : Float
-  sensor rearLeft : Float
-  sensor rearRight : Float
   sensor sideLeft : Float
   sensor sideRight : Float
 
@@ -876,11 +839,7 @@ system {
   // We define periodic tasks, where the first argument to each task template
   // denotes the period of the respective tasks.
   task speedEst = SpeedEst(500ms) priority 1
-  task frontLeft = FrontRearDistance(500ms, 0.0 - 1.0, usMaxRange, 10) priority 2
-  task frontRight = FrontRearDistance(500ms, 0.0 - 1.0, usMaxRange, 10) priority 2
   task frontCenter = FrontRearDistance(500ms, 0.0 - 1.0, tofMaxRange, 5) priority 2
-  task rearLeft = FrontRearDistance(500ms, 1.0, usMaxRange, 10) priority 2
-  task rearRight = FrontRearDistance(500ms, 1.0, usMaxRange, 10) priority 2
   task leftSide = SideDistance(500ms) priority 1
   task rightSide = SideDistance(500ms) priority 1
   task pos = PositionEstimate(1s) priority 77
@@ -891,36 +850,16 @@ system {
   speedRight -> speedEst.rspeed
 
   // Distance estimation inputs
-  frontLeft -> frontLeft.distObs
-  steeringAngle -> frontLeft.steeringAngleObs
-  speedEst.speed -> frontLeft.speedEst
-
-  frontRight -> frontRight.distObs
-  steeringAngle -> frontRight.steeringAngleObs
-  speedEst.speed -> frontRight.speedEst
-
   frontCenter -> frontCenter.distObs
   steeringAngle -> frontCenter.steeringAngleObs
   speedEst.speed -> frontCenter.speedEst
-
-  rearLeft -> rearLeft.distObs
-  steeringAngle -> rearLeft.steeringAngleObs
-  speedEst.speed -> rearLeft.speedEst
-
-  rearRight -> rearRight.distObs
-  steeringAngle -> rearRight.steeringAngleObs
-  speedEst.speed -> rearRight.speedEst
 
   sideLeft -> leftSide.distObs
 
   sideRight -> rightSide.distObs
 
   // Position estimation inputs
-  frontLeft.distEst -> pos.frontLeft
-  frontRight.distEst -> pos.frontRight
   frontCenter.distEst -> pos.frontCenter
-  rearLeft.distEst -> pos.rearLeft
-  rearRight.distEst -> pos.rearRight
   leftSide.distEst -> pos.left
   rightSide.distEst -> pos.right
   speedEst.speed -> pos.speed
