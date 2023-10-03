@@ -841,12 +841,12 @@ system {
   // Tasks
   // We define periodic tasks, where the first argument to each task template
   // denotes the period of the respective tasks.
-  task speedEst = SpeedEst(500ms) priority 1
-  task frontCenter = FrontRearDistance(500ms, 0.0 - 1.0, tofMaxRange, 5) priority 2
-  task leftSide = SideDistance(500ms) priority 1
-  task rightSide = SideDistance(500ms) priority 1
-  task pos = PositionEstimate(1s) priority 77
-  task brake = BrakeEstimate(250ms, 0.2) priority 10
+  task speedEst = SpeedEst(500ms) importance 1
+  task frontCenter = FrontRearDistance(500ms, 0.0 - 1.0, tofMaxRange, 5) importance 2
+  task leftSide = SideDistance(500ms) importance 1
+  task rightSide = SideDistance(500ms) importance 1
+  task pos = PositionEstimate(1s) importance 77
+  task brake = BrakeEstimate(250ms, 0.2) importance 10
 
   // Speed estimation inputs
   speedLeft -> speedEst.lspeed
