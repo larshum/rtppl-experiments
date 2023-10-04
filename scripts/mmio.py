@@ -40,7 +40,7 @@ def read_message(shm):
         buffers[shm] = sz-n
         return b1 + b2
     else:
-        b = shm.buf[pos:pos+sz]
+        b = bytes(shm.buf[pos:pos+sz])
         shm.buf[pos:pos+sz] = bytearray(sz)
         buffers[shm] = pos+sz
         return b
