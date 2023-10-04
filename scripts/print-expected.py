@@ -14,11 +14,8 @@ def compute_expected(v):
 
 posFile = "pos-posEst"
 path = sys.argv[1]
-for x,_,_ in os.walk(path):
-    p = f"{x}/pos-posEst"
-    if os.path.isfile(p):
-        print(f"Results of {x}")
-        pos_dists = sorted(dist.read_dists(p, 3))
-        for ts, v in pos_dists:
-            x, y, d = compute_expected(v)
-            print(f"{ts}| {x} {y} {d} ({len(v)})")
+if os.path.isfile(path):
+    pos_dists = sorted(dist.read_dists(path, 3))
+    for ts, v in pos_dists:
+        x, y, d = compute_expected(v)
+        print(f"{ts}| {x} {y} {d} ({len(v)})")
