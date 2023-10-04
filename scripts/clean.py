@@ -31,39 +31,9 @@ os.chdir(path)
 nwfile = f"network.json"
 data = network.read_network(nwfile)
 
-# If the '-a' flag, we remove all files. Otherwise, we simply clear applicable
-# files of contents.
-if args.a:
-    clear = try_remove
-else:
-    clear = try_clear
-
-for _, dsts in data["sensor_outs"].items():
-    for dst in dsts:
-        clear(f"{dst}")
-for src, dsts in data["relays"].items():
-    clear(f"{src}")
-    for dst in dsts:
-        clear(f"{dst}")
-for _, srcs in data["actuator_ins"].items():
-    for src in srcs:
-        clear(f"{src}")
-for task in data["tasks"]:
-    clear(f"{task['id']}-logfile.txt")
-    try_remove(f"{task['id']}.collect")
-
-# These files should be removed when the '-a' flag is set, but otherwise we
-# don't touch them.
-if args.a:
-    for src, _ in data["sensor_outs"].items():
-        clear(f"{src}")
-    for task in data["tasks"]:
-        clear(f"{task['id']}")
-        clear(f"{task['id']}.mc")
-        clear(f"{task['id']}.config")
-        clear(f"{task['id']}.collect")
-        clear(f"{task['id']}-logfile.txt")
-    for dst, _ in data["actuator_ins"].items():
-        clear(f"{dst}")
-    clear(nwfile)
-    clear("task-core-map.txt")
+# If the '-a' flag is set, we remove all files except for the original source
+# files. Otherwise, we also keep the configuration files.
+for f in os.listdir("."):
+    if not f.endswith(".rpl"):
+        if not args.a and not f.endswith(".config"):
+            try_remove(f)
