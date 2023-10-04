@@ -68,9 +68,10 @@ def replay_messages(replay_path, target_path, sensor_outputs):
 def record_messages(debug_files):
     for shm, f in debug_files:
         msgs = mmio.read_messages(shm)
-        if len(msgs) > 0:
-            data = b''.join(msgs)
-            f.write(data)
+        for msg in msgs:
+            szbytes = struct.pack("=q", len(msg))
+            f.write(szbytes)
+            f.write(msg)
 
 procs = []
 
