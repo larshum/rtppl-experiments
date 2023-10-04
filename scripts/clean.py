@@ -8,6 +8,7 @@ import sys
 import network
 
 nwfile = "network.json"
+ttcfile = "task-core-map.txt"
 
 def try_remove(f):
     try:
@@ -36,6 +37,11 @@ def keep_file(clear_all_temp, nw, f):
     # re-configuring the number of particles to use in the task.
     configs = set([f"{t['id']}.config" for t in nw["tasks"]])
     if f in configs:
+        return True
+
+    # If it is the file defining the task-to-core mapping, we keep it as that
+    # is part of the configuration.
+    if f == ttcfile:
         return True
 
     # Otherwise, we don't need to keep it
