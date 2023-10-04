@@ -80,7 +80,8 @@ p.add_argument("-p", "--path", action="store", required=True)
 p.add_argument("-m", "--map", action="store", required=True)
 p.add_argument("-r", "--replay", action="store")
 p.add_argument("-u", "--usage", action="store_true")
-p.add_argument("--record", action="store_true")
+p.add_argument("--record-sensors", action="store_true")
+p.add_argument("--record-actuators", action="store_true")
 args = p.parse_args()
 
 map_file = args.map
@@ -121,7 +122,7 @@ os.chdir(path)
 tasks = combine_tasks_with_core_mapping(nw["tasks"], "task-core-map.txt")
 priority = 99
 for task in tasks:
-    if not args.record:
+    if not args.record_sensors:
         cmd = [f"./{task['id']}", f"../{map_file}"]
         cmd = ["taskset", "-c", f"{task['core']}"] + cmd
         print(cmd)
@@ -131,9 +132,16 @@ for task in tasks:
         priority -= 1
         procs.append(proc)
 
+if args.record_actuators:
+    for a, _ in nw["actuator_ins"].items():
+        shm = mmio.open_file(a)
+        fd = open(f"{a}-actuator", "wb")
+        debug_files.append((shm, fd))
 if args.replay:
     os.chdir(original_path)
     replay_messages(args.replay, path, nw["sensor_outs"].items())
+    os.chdir(path)
+    record_messages(debug_files)
     time.sleep(1)
     for proc in procs:
         if proc.poll():
@@ -142,7 +150,7 @@ if args.replay:
             print(f"Process {proc.args} died: {proc.stdout}\n{proc.stderr}")
     handler(signal.SIGINT, None)
 else:
-    if args.record:
+    if args.record_sensors:
         print("Recording sensor data: not running tasks to prevent interference")
         for _, in_ports in nw["sensor_outs"].items():
             for in_port in in_ports:
@@ -150,7 +158,7 @@ else:
                 fd = open(f"{in_port}-sensor", "wb")
                 debug_files.append((shm, fd))
     while True:
-        if args.record:
+        if args.record_sensors or args.record_actuators:
             record_messages(debug_files)
         live = []
         for proc in procs:
