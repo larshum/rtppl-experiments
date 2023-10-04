@@ -31,7 +31,7 @@ def replay_messages(replay_path, target_path, sensor_outputs):
     for _, dsts in sensor_outputs:
         for dst in dsts:
             try:
-                with open(f"{replay_path}/{dst}", "rb") as f:
+                with open(f"{replay_path}/{dst}-sensor", "rb") as f:
                     dst_fd = mmio.open_file(dst)
                     msgs.append((dst_fd, f.read()))
             except:
@@ -50,25 +50,27 @@ def replay_messages(replay_path, target_path, sensor_outputs):
 
     # Replay the raw data by sending it out in the order it was observed in
     start_time = time.time_ns()
-    t0 = out_data[0][1]
-    for fd, t1, payload in out_data:
-        exec_time = time.time_ns() - start_time
-        t_delta = t1 - t0
-        if exec_time < t_delta:
-            time.sleep((t_delta - exec_time) / 1e9)
-        msg = struct.pack("=qq", len(payload) + 8, start_time + t_delta) + payload
-        mmio.write_message(fd, msg)
+    if len(out_data) > 0:
+        t0 = out_data[0][1]
+        for fd, t1, payload in out_data:
+            exec_time = time.time_ns() - start_time
+            t_delta = t1 - t0
+            if exec_time < t_delta:
+                time.sleep((t_delta - exec_time) / 1e9)
+            msg = struct.pack("=qq", len(payload) + 8, start_time + t_delta) + payload
+            mmio.write_message(fd, msg)
 
     # Close the output files before quitting
     fds = set([fd for fd, _, _ in out_data])
     for fd in fds:
         mmio.close_file(fd)
 
-def store_debug_pos(debug_file):
-    shm, f = debug_file
-    msgs = mmio.read_messages(shm)
-    data = b''.join(msgs)
-    f.write(data)
+def record_messages(debug_files):
+    for shm, f in debug_files:
+        msgs = mmio.read_messages(shm)
+        if len(msgs) > 0:
+            data = b''.join(msgs)
+            f.write(data)
 
 procs = []
 
@@ -85,7 +87,7 @@ path = args.path
 
 nw = network.read_network(f"{path}/network.json")
 
-debug_file = None
+debug_files = []
 
 def handler(sig, frame):
     print("Killing remaining processes")
@@ -102,8 +104,7 @@ def handler(sig, frame):
             proc.send_signal(signal.SIGKILL)
             proc.terminate()
             proc.wait()
-    if debug_file:
-        shm, f = debug_file
+    for shm, f in debug_files:
         mmio.close_file(shm)
         f.close()
     sys.exit(0)
@@ -140,12 +141,18 @@ if args.replay:
     handler(signal.SIGINT, None)
 else:
     if args.record:
-        shm = mmio.open_file("posDebug")
-        fd = open("posDebug", "wb")
-        debug_file = (shm, fd)
+        for _, in_ports in nw["sensor_outs"].items():
+            for in_port in in_ports:
+                shm = mmio.open_file(in_port)
+                fd = open(f"{in_port}-sensor", "wb")
+                debug_files.append((shm, fd))
+        for a, _ in nw["actuator_ins"].items():
+            shm = mmio.open_file(a)
+            fd = open(f"{a}-actuator", "wb")
+            debug_files.append((shm, fd))
     while True:
         if args.record:
-            store_debug_pos(debug_file)
+            record_messages(debug_files)
         live = []
         for proc in procs:
             if proc.poll():
