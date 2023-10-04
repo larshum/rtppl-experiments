@@ -120,14 +120,15 @@ os.chdir(path)
 tasks = combine_tasks_with_core_mapping(nw["tasks"], "task-core-map.txt")
 priority = 99
 for task in tasks:
-    cmd = [f"./{task['id']}", f"../{map_file}"]
-    cmd = ["taskset", "-c", f"{task['core']}"] + cmd
-    print(cmd)
-    taskLog = open(f"{task['id']}-logfile.txt", "w+")
-    proc = subprocess.Popen(cmd, stdout=taskLog, env={"OCAMLRUNPARAM": "b"})
-    os.sched_setscheduler(proc.pid, os.SCHED_FIFO, os.sched_param(priority))
-    priority -= 1
-    procs.append(proc)
+    if not args.record:
+        cmd = [f"./{task['id']}", f"../{map_file}"]
+        cmd = ["taskset", "-c", f"{task['core']}"] + cmd
+        print(cmd)
+        taskLog = open(f"{task['id']}-logfile.txt", "w+")
+        proc = subprocess.Popen(cmd, stdout=taskLog, env={"OCAMLRUNPARAM": "b"})
+        os.sched_setscheduler(proc.pid, os.SCHED_FIFO, os.sched_param(priority))
+        priority -= 1
+        procs.append(proc)
 
 if args.replay:
     os.chdir(original_path)
@@ -141,15 +142,12 @@ if args.replay:
     handler(signal.SIGINT, None)
 else:
     if args.record:
+        print("Recording sensor data: not running tasks to prevent interference")
         for _, in_ports in nw["sensor_outs"].items():
             for in_port in in_ports:
                 shm = mmio.open_file(in_port)
                 fd = open(f"{in_port}-sensor", "wb")
                 debug_files.append((shm, fd))
-        for a, _ in nw["actuator_ins"].items():
-            shm = mmio.open_file(a)
-            fd = open(f"{a}-actuator", "wb")
-            debug_files.append((shm, fd))
     while True:
         if args.record:
             record_messages(debug_files)
