@@ -1,6 +1,7 @@
 import mmap
 import os
 import struct
+import sys
 from multiprocessing import shared_memory
 
 BUFFER_SIZE = 2**20
@@ -33,7 +34,7 @@ def read_message(shm):
     pos += 8
     if pos + sz >= len(shm.buf):
         n = len(shm.buf) - pos
-        b1 = bytes(shm.buf[pos:n])
+        b1 = bytes(shm.buf[pos:])
         shm.buf[pos:] = bytearray(n)
         b2 = bytes(shm.buf[0:sz-n])
         shm.buf[0:sz-n] = bytearray(sz-n)
@@ -67,3 +68,26 @@ def write_message(shm, msg):
         buffers[shm] = pos+len(msg)
     szbytes = struct.pack("=q", len(msg))
     shm.buf[sz_pos:sz_pos+8] = szbytes
+
+def __main__():
+    shm_write = open_file("test")
+    shm_read = open_file("test")
+    for i in range(1000):
+        b = bytearray(1024)
+        for j in range(1024):
+            b[j] = j % 256
+        write_message(shm_write, b)
+        write_message(shm_write, b)
+        msgs = read_messages(shm_read)
+        if len(msgs) != 2:
+            print("Invalid number of messages read")
+            sys.exit(1)
+        if b != msgs[0] or b != msgs[1]:
+            print(f"Mismatching byte arrays in iteration i={i}")
+            print(b)
+            print(msgs[0])
+            print(msgs[1])
+            sys.exit(1)
+    print("Tests passed")
+
+__main__()
