@@ -60,7 +60,7 @@ def replay_messages(replay_path, target_path, sensor_outputs):
             t_delta = t1 - t0
             if exec_time < t_delta:
                 time.sleep((t_delta - exec_time) / 1e9)
-            msg = struct.pack("=qq", len(payload) + 8, start_time + t_delta) + payload
+            msg = struct.pack("=q", start_time + t_delta) + payload
             mmio.write_message(fd, msg)
 
     # Close the output files before quitting
