@@ -7,6 +7,7 @@ import stat
 import struct
 import sys
 import time
+import threading
 
 import network
 import mmio
@@ -65,7 +66,7 @@ def replay_messages(replay_path, target_path, sensor_outputs):
     for fd in fds:
         mmio.close_file(fd)
 
-def record_messages(debug_files):
+def record_messages(path, debug_files):
     for shm, f in debug_files:
         msgs = mmio.read_messages(shm)
         for msg in msgs:
@@ -139,10 +140,11 @@ if args.record_actuators:
         debug_files.append((shm, fd))
 if args.replay:
     os.chdir(original_path)
+    rec_thread = threading.Timer(1.0, record_messages, args = [path, debug_files])
+    rec_thread.start()
     replay_messages(args.replay, path, nw["sensor_outs"].items())
-    os.chdir(path)
-    record_messages(debug_files)
     time.sleep(1)
+    rec_thread.cancel()
     for proc in procs:
         if proc.poll():
             proc.kill()
