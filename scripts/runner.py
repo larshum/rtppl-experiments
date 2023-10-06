@@ -68,7 +68,7 @@ def replay_messages(replay_path, target_path, sensor_outputs):
     for fd in fds:
         mmio.close_file(fd)
 
-def record_messages(path, debug_files):
+def record_messages(debug_files):
     while running:
         for shm, f in debug_files:
             msgs = mmio.read_messages(shm)
@@ -146,7 +146,7 @@ if args.record_actuators:
         debug_files.append((shm, fd))
 if args.replay:
     os.chdir(original_path)
-    rec_thread = threading.Thread(target=record_messages, args=[path, debug_files])
+    rec_thread = threading.Thread(target=record_messages, args=[debug_files])
     rec_thread.start()
     replay_messages(args.replay, path, nw["sensor_outs"].items())
     time.sleep(1)
