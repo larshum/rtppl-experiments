@@ -12,6 +12,8 @@ import threading
 import network
 import mmio
 
+running = True
+
 def combine_tasks_with_core_mapping(tasks, task_to_core_map_file):
     try:
         with open(task_to_core_map_file, "r") as f:
@@ -67,12 +69,14 @@ def replay_messages(replay_path, target_path, sensor_outputs):
         mmio.close_file(fd)
 
 def record_messages(path, debug_files):
-    for shm, f in debug_files:
-        msgs = mmio.read_messages(shm)
-        for msg in msgs:
-            szbytes = struct.pack("=q", len(msg))
-            f.write(szbytes)
-            f.write(msg)
+    while running:
+        for shm, f in debug_files:
+            msgs = mmio.read_messages(shm)
+            for msg in msgs:
+                szbytes = struct.pack("=q", len(msg))
+                f.write(szbytes)
+                f.write(msg)
+        time.sleep(1)
 
 procs = []
 
@@ -93,6 +97,8 @@ nw = network.read_network(f"{path}/network.json")
 debug_files = []
 
 def handler(sig, frame):
+    global running
+    running = False
     print("Killing remaining processes")
     for proc in procs:
         if args.usage:
@@ -140,11 +146,10 @@ if args.record_actuators:
         debug_files.append((shm, fd))
 if args.replay:
     os.chdir(original_path)
-    rec_thread = threading.Timer(1.0, record_messages, args = [path, debug_files])
+    rec_thread = threading.Thread(target=record_messages, args=[path, debug_files])
     rec_thread.start()
     replay_messages(args.replay, path, nw["sensor_outs"].items())
     time.sleep(1)
-    rec_thread.cancel()
     for proc in procs:
         if proc.poll():
             proc.kill()
