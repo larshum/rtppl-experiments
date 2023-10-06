@@ -69,7 +69,7 @@ def write_message(shm, msg):
     szbytes = struct.pack("=q", len(msg))
     shm.buf[sz_pos:sz_pos+8] = szbytes
 
-def __main__():
+def main():
     shm_write = open_file("test")
     shm_read = open_file("test")
     for i in range(1000):
@@ -90,4 +90,5 @@ def __main__():
             sys.exit(1)
     print("Tests passed")
 
-__main__()
+if __name__ == "__main__":
+    main()
