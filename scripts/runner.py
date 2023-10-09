@@ -69,14 +69,17 @@ def replay_messages(replay_path, target_path, sensor_outputs):
         mmio.close_file(fd)
 
 def record_messages(debug_files):
-    while running:
-        for shm, f in debug_files:
-            msgs = mmio.read_messages(shm)
-            for msg in msgs:
-                szbytes = struct.pack("=q", len(msg))
-                f.write(szbytes)
-                f.write(msg)
-        time.sleep(1)
+    if len(debug_files) == 0:
+        pass
+    else:
+        while running:
+            for shm, f in debug_files:
+                msgs = mmio.read_messages(shm)
+                for msg in msgs:
+                    szbytes = struct.pack("=q", len(msg))
+                    f.write(szbytes)
+                    f.write(msg)
+            time.sleep(1)
 
 procs = []
 

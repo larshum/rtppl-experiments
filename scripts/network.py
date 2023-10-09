@@ -13,14 +13,14 @@ def read_network(file):
     for c in data["connections"]:
         src = c["from"]
         dst = c["to"]
-        if src in data["sensors"]:
-            if not src in sensor_outs:
-                sensor_outs[src] = []
-            sensor_outs[src].append(dst)
-        elif dst in data["actuators"]:
+        if dst in data["actuators"]:
             if not dst in actuator_ins:
                 actuator_ins[dst] = []
             actuator_ins[dst].append(src)
+        elif src in data["sensors"]:
+            if not src in sensor_outs:
+                sensor_outs[src] = []
+            sensor_outs[src].append(dst)
         else:
             if not src in relays:
                 relays[src] = []
