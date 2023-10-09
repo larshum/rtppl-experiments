@@ -829,14 +829,22 @@ system {
   sensor speedRight : Float // speed in RPM
   sensor steeringAngle : Float // steering in degrees
 
-  // Debug actuator, to which we write the position estimates
-  actuator posDebug : Dist(Pos)
-
   // Brake actuator
   // Writing a value to this actuator (the payload is irrelevant) starts the
   // emergency brakes, running the motor in reverse and preventing acceleration
   // inputs.
   actuator brake : Float
+
+  // Actuators which we use for debugging purposes and which should not be
+  // considered part of the model. We use them to record the sensor inputs and
+  // the position estimates.
+  actuator frontCenterDebug : Float
+  actuator sideLeftDebug : Float
+  actuator sideRightDebug : Float
+  actuator speedLeftDebug : Float
+  actuator speedRightDebug : Float
+  actuator steeringAngleDebug : Float
+  actuator posDebug : Dist(Pos)
 
   // Tasks
   // We define periodic tasks, where the first argument to each task template
@@ -872,7 +880,18 @@ system {
   speedEst.speed -> brake.speed
   steeringAngle -> brake.steeringAngle
   pos.posEst -> brake.pos
-  pos.posEst -> posDebug
 
+  // Brake estimation output to the only actual actuator of this model
   brake.brake -> brake
+
+  // Connections to debug actuators which do not consider to be part of the
+  // model, but which we only use to record the sensor inputs and the position
+  // estimates.
+  frontCenter -> frontCenterDebug
+  sideLeft -> sideLeftDebug
+  sideRight -> sideRightDebug
+  speedLeft -> speedLeftDebug
+  speedRight -> speedRightDebug
+  steeringAngle -> steeringAngleDebug
+  pos.posEst -> posDebug
 }
