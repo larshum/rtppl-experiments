@@ -517,18 +517,27 @@ def computePos(p0 : Pos, l : Float, r : Float, steeringAngle : Float) : Pos {
   return p1
 }
 
+def computeSpread(saObs : [TSV(Float)]) : Float {
+  var minv = minValue(saObs)
+  var maxv = maxValue(saObs)
+  return maxv - minv
+}
+
 // NOTE(larshum, 2023-06-20): We assume the current steering angle is normally
 // distributed around the most recently observed steering angle input signal.
 // As the steering angle is reported in degrees, we translate it to radians
 // and, based on observed data, we estimate the true steering of the car.
-model estimateSteering(saObs : Float) : {sa : Float, turnRadius : Float} {
-  cond steerCoeff if saObs > 0.0 {
+model estimateSteering(saObs : [TSV(Float)]) : {sa : Float, turnRadius : Float} {
+  var lastObs = value(saObs[subInt(|saObs|, 1)])
+  cond steerCoeff if lastObs > 0.0 {
     steerCoeff = 0.2
   } else {
     steerCoeff = 0.243
   }
-  var steerRate = degToRad(saObs) / maxSteer
-  sample sa ~ Gaussian(0.03 - steerRate * steerCoeff, steerRate * 0.15)
+  var spread = computeSpread(saObs) / 40.0
+  var variance = clamp(0.15 * spread, 0.01, 0.15)
+  var steerRate = degToRad(lastObs) / maxSteer
+  sample sa ~ Gaussian(0.03 - steerRate * steerCoeff, variance)
 
   var tr = wheelbase / tan(sa)
   cond tr if tr < 0.0 {
@@ -541,13 +550,13 @@ model estimateSteering(saObs : Float) : {sa : Float, turnRadius : Float} {
 model positionModel(m : RoomMap, prior : TSV(Dist(Pos)),
                     fcEst : [TSV(Dist(Float))], lEst : [TSV(Dist(Float))],
                     rEst : [TSV(Dist(Float))], speedEst : TSV(Dist(Float)),
-                    saObs : TSV(Float)) : Pos {
+                    saObs : [TSV(Float)]) : Pos {
 
   sample posPrev ~ value(prior)
   sample sigma ~ Gamma(0.5, 1.0)
   sample v ~ value(speedEst)
 
-  var steer = estimateSteering(value(saObs))
+  var steer = estimateSteering(saObs)
   var sa = steer.sa
   var turnRadius = steer.turnRadius
 
@@ -646,7 +655,7 @@ template PositionEstimate(period : Int) {
   infer initSpeedModel() to initSpeed
   var acc = {
     d = tsv(0, d),
-    sa = tsv(0, 0.0),
+    sa = [tsv(0, 0.0)],
     speed = tsv(0, initSpeed)
   }
   infer positionModel(m, acc.d, [], [], [], acc.speed, acc.sa)
@@ -666,7 +675,7 @@ template PositionEstimate(period : Int) {
     // printDistFloats("rightSide", rEst)
     // printFloats("steeringAngle", concat([acc.sa], saObs))
     // printDistFloats("speed", concat([acc.speed], speedEst))
-    acc.sa = maxFloatTimestamp(concat([acc.sa], saObs))
+    acc.sa = concat(takeNMostRecentFloat(acc.sa, 1), saObs)
     acc.speed = maxDistFloatTimestamp(acc.speed, speedEst)
     infer positionModel(m, acc.d, fcEst, lEst, rEst, acc.speed, acc.sa) to d
     // infer positionModel(m, acc.d, flEst, frEst, fcEst, rlEst, rrEst,
@@ -715,7 +724,7 @@ def estimateDistanceOnCurve(ofs : Offset, p : Pos, inBounds : Pos -> Bool,
   return res
 }
 
-model brakeDistanceModel(m : RoomMap, pos : TSV(Dist(Pos)), saObs : TSV(Float),
+model brakeDistanceModel(m : RoomMap, pos : TSV(Dist(Pos)), saObs : [TSV(Float)],
                          speed : TSV(Dist(Float))) : Float {
   // NOTE(larshum, 2023-06-19): Estimate the current position based on our most
   // recent estimates of the position and the speed, as well as the most
@@ -730,7 +739,7 @@ model brakeDistanceModel(m : RoomMap, pos : TSV(Dist(Pos)), saObs : TSV(Float),
     direction = p.direction
   }
 
-  var steer = estimateSteering(value(saObs))
+  var steer = estimateSteering(saObs)
   var sa = steer.sa
   var turnRadius = steer.turnRadius
 
@@ -792,7 +801,7 @@ template BrakeEstimate(period : Int, safetyMargin : Float) {
   infer initSpeedModel() to initSpeed
   var acc = {
     speed = tsv(0, initSpeed),
-    sa = tsv(0, 0.0),
+    sa = [tsv(0, 0.0)],
     pos = tsv(0, d)
   }
   delay 5s
@@ -805,7 +814,7 @@ template BrakeEstimate(period : Int, safetyMargin : Float) {
     // printFloats("steering angle", concat([acc.sa], saObs))
     // printDistFloats("speed", concat([acc.speed], speedEst))
     acc.pos = maxDistPosTimestamp(acc.pos, posEst)
-    acc.sa = maxFloatTimestamp(concat([acc.sa], saObs))
+    acc.sa = concat(takeNMostRecentFloat(acc.sa, 1), saObs)
     acc.speed = maxDistFloatTimestamp(acc.speed, speedEst)
     infer brakeDistanceModel(m, acc.pos, acc.sa, acc.speed) to d
     var mv = medianValue(samples d)
