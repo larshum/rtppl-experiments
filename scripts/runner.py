@@ -31,15 +31,16 @@ def combine_tasks_with_core_mapping(tasks, task_to_core_map_file):
 def replay_messages(replay_path, target_path, sensor_outputs):
     # Read the raw data from all sensor files
     msgs = []
-    for _, dsts in sensor_outputs:
-        for dst in dsts:
-            try:
-                with open(f"{replay_path}/{dst}-sensor", "rb") as f:
+    for s, dsts in sensor_outputs:
+        try:
+            with open(f"{replay_path}/{s}-sensor", "rb") as f:
+                data = f.read()
+                for dst in dsts:
                     dst_fd = mmio.open_file(dst)
-                    msgs.append((dst_fd, f.read()))
-            except:
-                # Do not provide any data if the file was not found
-                pass
+                    msgs.append((dst_fd, data))
+        except:
+            print(f"Could not find recorded data for sensor {s}")
+            pass
 
     # Interpret the raw data so that we can order it by timestamps
     out_data = []
@@ -160,8 +161,6 @@ if args.record:
         shm = mmio.open_file(f"debug-{s}")
         fd = open(f"{s}-sensor", "wb")
         debug_files.append((shm, fd))
-print(debug_files)
-print(nw["sensor_outs"].items())
 if args.replay:
     os.chdir(original_path)
     rec_thread = threading.Thread(target=record_messages, args=[debug_files])
