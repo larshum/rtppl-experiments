@@ -88,7 +88,7 @@ p.add_argument("-p", "--path", action="store", required=True)
 p.add_argument("-m", "--map", action="store", required=True)
 p.add_argument("-r", "--replay", action="store")
 p.add_argument("-u", "--usage", action="store_true")
-p.add_argument("--record-actuators", action="store_true")
+p.add_argument("--record", action="store_true")
 args = p.parse_args()
 
 map_file = args.map
@@ -148,11 +148,20 @@ for task in tasks:
     priority -= 1
     procs.append(proc)
 
-if args.record_actuators:
+# If recording is enabled, we record the outputs written to all actuators and
+# (if --debug-sensors was passed when compiling the model) we record the inputs
+# received from all sensors.
+if args.record:
     for a, _ in nw["actuator_ins"].items():
         shm = mmio.open_file(a)
         fd = open(f"{a}-actuator", "wb")
         debug_files.append((shm, fd))
+    for s, _ in nw["sensor_outs"].items():
+        shm = mmio.open_file(f"debug-{s}")
+        fd = open(f"{s}-sensor", "wb")
+        debug_files.append((shm, fd))
+print(debug_files)
+print(nw["sensor_outs"].items())
 if args.replay:
     os.chdir(original_path)
     rec_thread = threading.Thread(target=record_messages, args=[debug_files])
@@ -167,7 +176,7 @@ if args.replay:
     handler(signal.SIGINT, None)
 else:
     while True:
-        if args.record_actuators:
+        if args.record:
             record_messages(debug_files)
         live = []
         for proc in procs:

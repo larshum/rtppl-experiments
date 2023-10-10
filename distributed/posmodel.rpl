@@ -844,15 +844,8 @@ system {
   // inputs.
   actuator brake : Float
 
-  // Actuators which we use for debugging purposes and which should not be
-  // considered part of the model. We use them to record the sensor inputs and
-  // the position estimates.
-  actuator frontCenterDebug : Float
-  actuator sideLeftDebug : Float
-  actuator sideRightDebug : Float
-  actuator speedLeftDebug : Float
-  actuator speedRightDebug : Float
-  actuator steeringAngleDebug : Float
+  // Actuator to record the estimated position. Technically not part of the
+  // model, but we use it for debugging purposes.
   actuator posDebug : Dist(Pos)
 
   // Tasks
@@ -896,11 +889,5 @@ system {
   // Connections to debug actuators which do not consider to be part of the
   // model, but which we only use to record the sensor inputs and the position
   // estimates.
-  frontCenter -> frontCenterDebug
-  sideLeft -> sideLeftDebug
-  sideRight -> sideRightDebug
-  speedLeft -> speedLeftDebug
-  speedRight -> speedRightDebug
-  steeringAngle -> steeringAngleDebug
   pos.posEst -> posDebug
 }
