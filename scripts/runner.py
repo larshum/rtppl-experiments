@@ -154,9 +154,12 @@ for task in tasks:
 # received from all sensors.
 if args.record:
     for a, _ in nw["actuator_ins"].items():
-        shm = mmio.open_file(a)
-        fd = open(f"{a}-actuator", "wb")
-        debug_files.append((shm, fd))
+        if a == "brake":
+            pass
+        else:
+            shm = mmio.open_file(a)
+            fd = open(f"{a}-actuator", "wb")
+            debug_files.append((shm, fd))
     for s, _ in nw["sensor_outs"].items():
         shm = mmio.open_file(f"debug-{s}")
         fd = open(f"{s}-sensor", "wb")
