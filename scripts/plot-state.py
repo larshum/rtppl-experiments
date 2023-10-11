@@ -15,12 +15,10 @@ import sys
 import dist
 
 class Dist:
-    def __init__(self, x, y, s, d, sa):
+    def __init__(self, x, y, d):
         self.x = x
         self.y = y
-        self.speed = s
         self.direction = d
-        self.steeringAngle = sa
 
 def figid(x):
     c = chr(int(x % 26) + 65)
@@ -33,12 +31,12 @@ def conv_dist(dist):
     ts, samples = dist
     conv_samples = []
     for sample in samples:
-        w, (x, y, speed, direction, steering) = sample
-        conv_samples.append((w, Dist(x, y, speed, direction, steering)))
+        w, (x, y, direction) = sample
+        conv_samples.append((w, Dist(x, y, direction)))
     return (ts, conv_samples)
 
 def read_state_dists(f):
-    return [conv_dist(dist) for dist in dist.read_dists(f, 5)]
+    return [conv_dist(dist) for dist in dist.read_dists(f, 3)]
 
 if not os.path.exists("plots/"):
     os.mkdir("plots")
