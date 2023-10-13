@@ -122,11 +122,12 @@ def handler(sig, frame):
     for task in nw["tasks"]:
         try:
             with open(f"{task}.collect") as f:
-                [_, overran] = f.read().split(" ")
+                data = f.read().split("\n")
+                overran = data[-1]
                 if overran == 1:
                     print(f"Task {task} overran its budget")
         except:
-            pass
+            print(f"Did not find collected data for task {task}")
     sys.exit(0)
 
 signal.signal(signal.SIGINT, handler)
