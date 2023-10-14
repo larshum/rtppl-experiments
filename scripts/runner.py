@@ -120,14 +120,15 @@ def handler(sig, frame):
         mmio.close_file(shm)
         f.close()
     for task in nw["tasks"]:
+        t = task["id"]
         try:
-            with open(f"{task}.collect") as f:
+            with open(f"{t}.collect") as f:
                 data = f.read().split("\n")
                 overran = data[-1]
                 if overran == 1:
-                    print(f"Task {task} overran its budget")
+                    print(f"Task {t} overran its budget")
         except:
-            print(f"Did not find collected data for task {task}")
+            print(f"Did not find collected data for task {t}")
     sys.exit(0)
 
 signal.signal(signal.SIGINT, handler)
@@ -176,6 +177,7 @@ if args.replay:
             proc.kill()
             proc.wait()
             print(f"Process {proc.args} died: {proc.stdout}\n{proc.stderr}")
+    os.chdir(path)
     handler(signal.SIGINT, None)
 else:
     while True:
