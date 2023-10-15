@@ -59,33 +59,6 @@ def degToRad(degAngle : Float) : Float {
   return degAngle * pi / 180.0
 }
 
-def abs(x : Float) : Float {
-  cond x if x < 0.0 {
-    x = 0.0 - x
-  } else {}
-  return x
-}
-
-def maxFloat(a : Float, b : Float) : Float {
-  cond res if a < b {
-    res = b
-  } else {
-    res = a
-  }
-  return res
-}
-
-def sgn(x : Float) : Float {
-  cond x if x < 0.0 {
-    x = 0.0 - 1.0
-  } else {
-    cond x if x > 0.0 {
-      x = 1.0
-    } else {}
-  }
-  return x
-}
-
 def readRoomMap() : RoomMap {
   var data : [[Bool]] = readRoomMapRuntimeHelper()
   return {data = data, rows = |data|, cols = |data[0]|}
@@ -163,16 +136,6 @@ def cmpFloatTsvValue(l : TSV(Float), r : TSV(Float)) : Int {
   return acc
 }
 
-def maxFloatTimestamp(tsvs : [TSV(Float)]) : TSV(Float) {
-  var acc = tsvs[0]
-  loop acc for tsv in tsvs {
-    cond acc if ltInt(cmpFloatTimestamp(acc, tsv), 0) {
-      acc = tsv
-    } else {}
-  }
-  return acc
-}
-
 model initSpeedModel() : Float {
   return 0.0
 }
@@ -241,28 +204,6 @@ def takeNMostRecentFloat(a : [TSV(Float)], n : Int) : [TSV(Float)] {
     a = res
   } else {}
   return a
-}
-
-def expectedFloat(d : Dist(Float)) : Float {
-  var dist = 0.0
-  var s = samples d
-  var values = s.s
-  var weights = s.w
-  loop dist for i in range(0, |values|) {
-    dist = dist + values[i] * exp(weights[i])
-  }
-  return dist
-}
-
-def printFloats(obs : [TSV(Float)]) : Unit {
-  print("[(")
-  loop for tsv in obs {
-    print(intToString(timestamp(tsv)))
-    print(",")
-    print(floatToString(value(tsv)))
-    print("; ")
-  }
-  printLn("]")
 }
 
 def printLengths(lens : [Int]) : Unit {
@@ -526,54 +467,6 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), fcEst : [TSV(Float)],
   return pos
 }
 
-def expectedPos(d : Dist(Pos)) : Pos {
-  var pos = {x = 0.0, y = 0.0, direction = 0.0}
-  var s = samples d
-  var values = s.s
-  var weights = s.w
-  loop pos for i in range(0, |values|) {
-    var p = values[i]
-    var w = exp(weights[i])
-    pos.x = pos.x + p.x * w
-    pos.y = pos.y + p.y * w
-    pos.direction = pos.direction + p.direction * w
-  }
-  return pos
-}
-
-def printPos(p : Pos) : Unit {
-  print("x = ")
-  print(floatToString(p.x))
-  print(", y = ")
-  print(floatToString(p.y))
-  print(", d = ")
-  printLn(floatToString(p.direction))
-}
-
-def printDistFloats(msg : String, dists : [TSV(Dist(Float))]) : Unit {
-  print(msg)
-  print(": [")
-  loop for d in dists {
-    print(intToString(timestamp(d)))
-    print(",")
-    print(floatToString(expectedFloat(value(d))))
-    print("; ")
-  }
-  printLn("]")
-}
-
-def printFloats(msg : String, dists : [TSV(Float)]) : Unit {
-  print(msg)
-  print(": [")
-  loop for d in dists {
-    print(intToString(timestamp(d)))
-    print(",")
-    print(floatToString(value(d)))
-    print("; ")
-  }
-  printLn("]")
-}
-
 template PositionEstimate(period : Int) {
   input frontCenter : Float
   input left : Float
@@ -696,18 +589,6 @@ def medianValue(x : {s : [Float], w : [Float]}) : Float {
   return res
 }
 
-def printDistPos(msg : String, dists : [TSV(Dist(Pos))]) : Unit {
-  print(msg)
-  printLn(": [")
-  loop for d in dists {
-    print("  ")
-    print(intToString(timestamp(d)))
-    print(",")
-    printPos(expectedPos(value(d)))
-  }
-  printLn("]")
-}
-
 // The brake estimation determines how far ahead in terms of distance the car
 // needs to brake to avoid collision. The provided safety margin determines how
 // much earlier (in terms of distance) the emergency brake is activated. For
@@ -718,7 +599,7 @@ template BrakeEstimate(period : Int, safetyMargin : Float) {
   input speed : Dist(Float)
   input steeringAngle : Float
   output brake : Float
-  var m : RoomMap = readRoomMap ()
+  var m : RoomMap = readRoomMap()
   infer initialPositionModel() to d
   infer initSpeedModel() to initSpeed
   var acc = {
