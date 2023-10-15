@@ -124,7 +124,7 @@ def handler(sig, frame):
         try:
             with open(f"{t}.collect") as f:
                 data = f.read().split("\n")
-                overran = data[-1]
+                overran = int(data[-1])
                 if overran == 1:
                     print(f"Task {t} overran its budget")
         except:
