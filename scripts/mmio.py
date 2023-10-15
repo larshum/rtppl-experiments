@@ -4,7 +4,7 @@ import struct
 import sys
 from multiprocessing import shared_memory
 
-BUFFER_SIZE = 2**20
+BUFFER_SIZE = 2**22
 
 buffers = {}
 
