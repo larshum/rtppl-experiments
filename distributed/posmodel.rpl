@@ -24,7 +24,7 @@ const wheelbase : Float = 0.35
 
 // NOTE(larshum, 2023-06-16): This is where we define the initial position of
 // the car, which we assume is known beforehand.
-const initPos : Pos = { x = 1.5, y = 11.1, direction = 1.5*pi }
+const initPos : Pos = { x = 2.1, y = 7.1, direction = 1.5*pi }
 
 const frontLeftOffset : Offset = {
   angle = 0.0-0.209639845874, distance = 0.240260275535, direction = 0.0
@@ -265,6 +265,15 @@ def printFloats(obs : [TSV(Float)]) : Unit {
   printLn("]")
 }
 
+def printLengths(lens : [Int]) : Unit {
+  print("[")
+  loop for len in lens {
+    print(intToString(len))
+    print(",")
+  }
+  printLn("]")
+}
+
 template SpeedEst(period : Int) {
   input lspeed : Float
   input rspeed : Float
@@ -274,13 +283,11 @@ template SpeedEst(period : Int) {
     delay period
     read lspeed to lObs
     read rspeed to rObs
+    printLengths([|lObs|, |rObs|])
     obs = sort(cmpFloatTimestamp, concat(lObs, rObs))
     cond if gtInt(|obs|, 0) {
       infer speedModel(obs) to d
       write d to speed
-      // printTimes()
-      // printFloats(obs)
-      // printLn(floatToString(expectedFloat(d)))
     } else {}
   }
 }
@@ -362,6 +369,7 @@ template SensorDistance(period : Int) {
   loop lastObs {
     delay period
     read distObs to obs
+    printLengths([|obs|])
     lastObs = takeNMostRecentFloat(concat(lastObs, obs), 3)
     cond if geqInt(|lastObs|, 3) {
       var res = medianOfLastThreeFloatTsv(lastObs)
@@ -592,19 +600,10 @@ template PositionEstimate(period : Int) {
     read right to rEst
     read speed to speedEst
     read steeringAngle to saObs
-    // printTimes()
-    // printDistFloats("frontCenter", fcEst)
-    // printDistFloats("leftSide", lEst)
-    // printDistFloats("rightSide", rEst)
-    // printFloats("steeringAngle", concat([acc.sa], saObs))
-    // printDistFloats("speed", concat([acc.speed], speedEst))
+    printLengths([|fcEst|, |lEst|, |rEst|, |speedEst|, |saObs|])
     acc.sa = concat(takeNMostRecentFloat(acc.sa, 1), saObs)
     acc.speed = maxDistFloatTimestamp(acc.speed, speedEst)
     infer positionModel(m, acc.d, fcEst, lEst, rEst, acc.speed, acc.sa) to d
-    // infer positionModel(m, acc.d, flEst, frEst, fcEst, rlEst, rrEst,
-    //                     lEst, rEst, acc.speed, acc.sa)
-    //   to d
-    // printPos(expectedPos(d))
     acc.d = tsv(0, d)
   }
 }
@@ -727,23 +726,22 @@ template BrakeEstimate(period : Int, safetyMargin : Float) {
     sa = [tsv(0, 0.0)],
     pos = tsv(0, d)
   }
-  delay 5s
+  delay 1s
+  delay 1s
+  delay 1s
+  delay 1s
+  delay 1s
   loop acc {
     read pos to posEst
     read speed to speedEst
     read steeringAngle to saObs
-    // printTimes()
-    // printDistPos("pos", concat([acc.pos], posEst))
-    // printFloats("steering angle", concat([acc.sa], saObs))
-    // printDistFloats("speed", concat([acc.speed], speedEst))
+    printLengths([|posEst|, |speedEst|, |saObs|])
     acc.pos = maxDistPosTimestamp(acc.pos, posEst)
     acc.sa = concat(takeNMostRecentFloat(acc.sa, 1), saObs)
     acc.speed = maxDistFloatTimestamp(acc.speed, speedEst)
     infer brakeDistanceModel(m, acc.pos, acc.sa, acc.speed) to d
     var mv = medianValue(samples d)
-    // printLn(floatToString(mv))
     cond if mv < safetyMargin {
-      // printLn("Sending brake signal")
       write 0.0 to brake
     } else {}
     delay period
