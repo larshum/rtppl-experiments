@@ -52,9 +52,8 @@ if len(sys.argv) == 3:
     cols = im.width
     fig, axs = plt.subplots(1)
     axs.imshow(im)
-    axs.set_xlabel("x")
-    axs.set_ylabel("y")
-    fig.savefig(f"{target}/0000.png")
+    axs.set_axis_off()
+    fig.savefig(f"{target}/0000.png", bbox_inches='tight')
     plt.close()
 
     # TODO: read reference positions
@@ -70,8 +69,7 @@ if len(sys.argv) == 3:
             if x >= 0 and x < cols and y >= 0 and y < rows:
                 data[y][x] += 1
         axs.imshow(data)
-        axs.set_xlabel("x")
-        axs.set_ylabel("y")
+        axs.set_axis_off()
         axs.imshow(im, alpha=.5)
-        fig.savefig(f"{target}/{i+1:04}.png")
+        fig.savefig(f"{target}/{i+1:04}.png", bbox_inches='tight')
         plt.close()
