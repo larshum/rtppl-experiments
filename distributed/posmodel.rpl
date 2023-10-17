@@ -591,7 +591,7 @@ def medianValue(x : {s : [Float], w : [Float]}) : Float {
 
 // The brake estimation determines how far ahead in terms of distance the car
 // needs to brake to avoid collision. The provided safety margin determines how
-// much earlier (in terms of distance) the emergency brake is activated. For
+// much earlier (in terms of distance) the emergency brakes are activated. For
 // example, if the car has to brake in 0.1m and the safety margin is 0.2m, the
 // task will signal to activate the emergency brakes.
 template BrakeEstimate(period : Int, safetyMargin : Float) {
@@ -654,35 +654,35 @@ system {
   // We define periodic tasks, where the first argument to each task template
   // denotes the period of the respective tasks.
   task speedEst = SpeedEst(500ms) importance 1
-  task frontCenter = SensorDistance(500ms) importance 1
-  task leftSide = SensorDistance(500ms) importance 1
-  task rightSide = SensorDistance(500ms) importance 1
+  task distance_FC = SensorDistance(500ms) importance 1
+  task distance_SL = SensorDistance(500ms) importance 1
+  task distance_SR = SensorDistance(500ms) importance 1
   task pos = PositionEstimate(1s) importance 77
-  task brake = BrakeEstimate(500ms, 0.2) importance 25
+  task braking = BrakeEstimate(500ms, 0.2) importance 25
 
   // Speed estimation inputs
   speedLeft -> speedEst.lspeed
   speedRight -> speedEst.rspeed
 
   // Distance estimation inputs
-  frontCenter -> frontCenter.distObs
-  sideLeft -> leftSide.distObs
-  sideRight -> rightSide.distObs
+  frontCenter -> distance_FC.distObs
+  sideLeft -> distance_SL.distObs
+  sideRight -> distance_SR.distObs
 
   // Position estimation inputs
-  frontCenter.distEst -> pos.frontCenter
-  leftSide.distEst -> pos.left
-  rightSide.distEst -> pos.right
+  distance_FC.distEst -> pos.frontCenter
+  distance_SL.distEst -> pos.left
+  distance_SR.distEst -> pos.right
   speedEst.speed -> pos.speed
   steeringAngle -> pos.steeringAngle
 
   // Brake estimation inputs
-  speedEst.speed -> brake.speed
-  steeringAngle -> brake.steeringAngle
-  pos.posEst -> brake.pos
+  speedEst.speed -> braking.speed
+  steeringAngle -> braking.steeringAngle
+  pos.posEst -> braking.pos
 
   // Brake estimation output to the only actual actuator of this model
-  brake.brake -> brake
+  braking.brake -> brake
 
   // Connections to debug actuators which do not consider to be part of the
   // model, but which we only use to record the sensor inputs and the position
