@@ -14,6 +14,23 @@ import mmio
 
 running = True
 
+def read_configuration(taskid):
+    try:
+        with open(f"{taskid}.config", "r") as f:
+            [p, b, s] = f.read().strip().split(" ")
+            return {"particles": int(p), "budget": int(b), "slowdown": int(s)}
+    except e:
+        print(f"Configuration file not found for task {taskid}.")
+        exit(1)
+
+def write_configuration(taskid, config):
+    try:
+        with open(f"{taskid}.config", "w") as f:
+            f.write(f"{config['particles']} {config['budget']} {config['slowdown']}")
+    except e:
+        print(f"Failed to update configuration file of task {taskid}.")
+        exit(1)
+
 def combine_tasks_with_core_mapping(tasks, task_to_core_map_file):
     try:
         with open(task_to_core_map_file, "r") as f:
@@ -28,7 +45,7 @@ def combine_tasks_with_core_mapping(tasks, task_to_core_map_file):
             task['core'] = 1
     return tasks
 
-def replay_messages(replay_path, target_path, sensor_outputs):
+def replay_messages(replay_path, target_path, sensor_outputs, slowdown):
     # Read the raw data from all sensor files
     msgs = []
     for s, dsts in sensor_outputs:
@@ -58,10 +75,11 @@ def replay_messages(replay_path, target_path, sensor_outputs):
         t0 = out_data[0][1]
         for fd, t1, payload in out_data:
             exec_time = time.time_ns() - start_time
-            t_delta = t1 - t0
-            if exec_time < t_delta:
-                time.sleep((t_delta - exec_time) / 1e9)
-            msg = struct.pack("=q", start_time + t_delta) + payload
+            t_delay = (t1 - t0) * slowdown
+            if exec_time < t_delay:
+                time.sleep((t_delay - exec_time) / 1e9)
+            ts = start_time + (t1 - t0)
+            msg = struct.pack("=q", ts) + payload
             mmio.write_message(fd, msg)
 
     # Close the output files before quitting
@@ -90,6 +108,7 @@ p.add_argument("-m", "--map", action="store", required=True)
 p.add_argument("-r", "--replay", action="store")
 p.add_argument("-u", "--usage", action="store_true")
 p.add_argument("--record", action="store_true")
+p.add_argument("--slowdown", action="store", type=int, default=1)
 args = p.parse_args()
 
 map_file = args.map
@@ -140,6 +159,19 @@ original_path = os.getcwd()
 os.chdir(path)
 
 tasks = combine_tasks_with_core_mapping(nw["tasks"], "task-core-map.txt")
+
+if args.slowdown != 1 and not args.replay:
+    print("A slowdown can only be used when replaying data")
+    exit(1)
+
+# Update the configuration of each task to ensure they run with a
+# consistent slowdown (only applicable when replaying).
+for task in tasks:
+    taskid = task["id"]
+    cfg = read_configuration(taskid)
+    cfg["slowdown"] = args.slowdown
+    write_configuration(taskid, cfg)
+
 priority = 99
 for task in tasks:
     cmd = [f"./{task['id']}", f"../{map_file}"]
@@ -170,7 +202,7 @@ if args.replay:
     os.chdir(original_path)
     rec_thread = threading.Thread(target=record_messages, args=[debug_files])
     rec_thread.start()
-    replay_messages(args.replay, path, nw["sensor_outs"].items())
+    replay_messages(args.replay, path, nw["sensor_outs"].items(), args.slowdown)
     time.sleep(1)
     for proc in procs:
         if proc.poll():
