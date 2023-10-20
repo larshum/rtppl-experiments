@@ -19,7 +19,7 @@ def read_configuration(taskid):
         with open(f"{taskid}.config", "r") as f:
             [p, b, s] = f.read().strip().split(" ")
             return {"particles": int(p), "budget": int(b), "slowdown": int(s)}
-    except e:
+    except:
         print(f"Configuration file not found for task {taskid}.")
         exit(1)
 
@@ -27,7 +27,7 @@ def write_configuration(taskid, config):
     try:
         with open(f"{taskid}.config", "w") as f:
             f.write(f"{config['particles']} {config['budget']} {config['slowdown']}")
-    except e:
+    except:
         print(f"Failed to update configuration file of task {taskid}.")
         exit(1)
 
