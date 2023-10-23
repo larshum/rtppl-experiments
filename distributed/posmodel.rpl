@@ -195,8 +195,8 @@ model speedModel(tsvs : [TSV(Float)]) : Float {
 }
 
 def takeNMostRecentFloat(a : [TSV(Float)], n : Int) : [TSV(Float)] {
-  a = sort(cmpFloatTimestamp, a)
   cond a if gtInt(|a|, n) {
+    a = sort(cmpFloatTimestamp, a)
     var res = []
     loop res for i in range(0, n) {
       res = push(res, a[subInt(|a|, subInt(n, i))])
@@ -479,10 +479,9 @@ template PositionEstimate(period : Int) {
   infer initSpeedModel() to initSpeed
   var acc = {
     d = tsv(0, d),
-    sa = [tsv(0, 0.0)],
     speed = tsv(0, initSpeed)
   }
-  infer positionModel(m, acc.d, [], [], [], acc.speed, acc.sa)
+  infer positionModel(m, acc.d, [], [], [], acc.speed, [tsv(0, 0.0)])
     to d
   acc.d = tsv(0, d)
   loop acc {
@@ -494,10 +493,11 @@ template PositionEstimate(period : Int) {
     read speed to speedEst
     read steeringAngle to saObs
     printLengths([|fcEst|, |lEst|, |rEst|, |speedEst|, |saObs|])
-    acc.sa = concat(takeNMostRecentFloat(acc.sa, 1), saObs)
     acc.speed = maxDistFloatTimestamp(acc.speed, speedEst)
-    infer positionModel(m, acc.d, fcEst, lEst, rEst, acc.speed, acc.sa) to d
-    acc.d = tsv(0, d)
+    cond acc if gtInt(|saObs|, 0) {
+      infer positionModel(m, acc.d, fcEst, lEst, rEst, acc.speed, saObs) to d
+      acc.d = tsv(0, d)
+    } else {}
   }
 }
 
@@ -547,7 +547,6 @@ model brakeDistanceModel(m : RoomMap, pos : TSV(Dist(Pos)), saObs : [TSV(Float)]
   sample p ~ value(pos)
   sample v ~ value(speed)
   var dist = v * timestampToSeconds(subInt(0, timestamp(pos)))
-  // TODO: use more accurate direction (based on steering angle?)
   var currPos = {
     x = p.x + dist * cos(p.direction),
     y = p.y + dist * sin(p.direction),
@@ -573,12 +572,8 @@ model brakeDistanceModel(m : RoomMap, pos : TSV(Dist(Pos)), saObs : [TSV(Float)]
 }
 
 def medianValue(x : {s : [Float], w : [Float]}) : Float {
-  var s : [Float] = []
   var xs : [Float] = x.s
-  loop s for i in range(0, |xs|) {
-    s = push(s, xs[i])
-  }
-  s = sort(cmpFloat, s)
+  s = sort(cmpFloat, xs)
   var res = 0.0
   cond res if eqInt(remInt(|s|, 2), 0) {
     var mid = divInt(|s|, 2)
@@ -589,12 +584,23 @@ def medianValue(x : {s : [Float], w : [Float]}) : Float {
   return res
 }
 
+def expectedSpeed(x : {s : [Float], w : [Float]}) : Float {
+  var v = 0.0
+  var values = x.s
+  var weights = x.w
+  loop v for i in range(0, |values|) {
+    var w = exp(weights[i])
+    v = v + values[i] * w
+  }
+  return v
+}
+
 // The brake estimation determines how far ahead in terms of distance the car
 // needs to brake to avoid collision. The provided safety margin determines how
 // much earlier (in terms of distance) the emergency brakes are activated. For
 // example, if the car has to brake in 0.1m and the safety margin is 0.2m, the
 // task will signal to activate the emergency brakes.
-template BrakeEstimate(period : Int, safetyMargin : Float) {
+template BrakeEstimate(period : Int) {
   input pos : Dist(Pos)
   input speed : Dist(Float)
   input steeringAngle : Float
@@ -604,28 +610,27 @@ template BrakeEstimate(period : Int, safetyMargin : Float) {
   infer initSpeedModel() to initSpeed
   var acc = {
     speed = tsv(0, initSpeed),
-    sa = [tsv(0, 0.0)],
     pos = tsv(0, d)
   }
-  delay 1s
-  delay 1s
-  delay 1s
-  delay 1s
-  delay 1s
   loop acc {
+    delay period
     read pos to posEst
     read speed to speedEst
     read steeringAngle to saObs
     printLengths([|posEst|, |speedEst|, |saObs|])
     acc.pos = maxDistPosTimestamp(acc.pos, posEst)
-    acc.sa = concat(takeNMostRecentFloat(acc.sa, 1), saObs)
     acc.speed = maxDistFloatTimestamp(acc.speed, speedEst)
-    infer brakeDistanceModel(m, acc.pos, acc.sa, acc.speed) to d
-    var mv = medianValue(samples d)
-    cond if mv < safetyMargin {
-      write 0.0 to brake
+    cond acc if gtInt(|saObs|, 0) {
+      infer brakeDistanceModel(m, acc.pos, saObs, acc.speed) to d
+      var mv = medianValue(samples d)
+      var v = expectedSpeed(samples value(acc.speed))
+      // If the median distance until crash is estimated to be less than the
+      // distance travelled until the next brake estimation, we activate the
+      // brakes.
+      cond if mv < v * timestampToSeconds(period) {
+        write 0.0 to brake
+      } else {}
     } else {}
-    delay period
   }
 }
 
@@ -653,12 +658,12 @@ system {
   // Tasks
   // We define periodic tasks, where the first argument to each task template
   // denotes the period of the respective tasks.
-  task speedEst = SpeedEst(500ms) importance 1
-  task distance_FC = SensorDistance(500ms) importance 1
-  task distance_SL = SensorDistance(500ms) importance 1
-  task distance_SR = SensorDistance(500ms) importance 1
-  task pos = PositionEstimate(1s) importance 77
-  task braking = BrakeEstimate(500ms, 0.2) importance 25
+  task speedEst = SpeedEst(500ms) importance 2
+  task distance_FC = SensorDistance(500ms) importance 0
+  task distance_SL = SensorDistance(500ms) importance 0
+  task distance_SR = SensorDistance(500ms) importance 0
+  task pos = PositionEstimate(1s) importance 4
+  task braking = BrakeEstimate(500ms) importance 1
 
   // Speed estimation inputs
   speedLeft -> speedEst.lspeed
