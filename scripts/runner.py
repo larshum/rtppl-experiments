@@ -188,7 +188,7 @@ for task in tasks:
 # received from all sensors.
 if args.record:
     for a, _ in nw["actuator_ins"].items():
-        if a == "brake":
+        if not args.replay and a == "brake":
             pass
         else:
             shm = mmio.open_file(a)
