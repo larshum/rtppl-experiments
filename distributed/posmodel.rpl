@@ -420,11 +420,12 @@ model estimateSteering(saObs : [TSV(Float)]) : {sa : Float, turnRadius : Float} 
   return {sa = sa, turnRadius = tr}
 }
 
-model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), fcEst : [TSV(Float)],
-                    lEst : [TSV(Float)], rEst : [TSV(Float)],
-                    speedEst : TSV(Dist(Float)), saObs : [TSV(Float)]) : Pos {
+model positionModel(m : RoomMap, prior : Dist(Pos), priorTs : Int,
+                    fcEst : [TSV(Float)], lEst : [TSV(Float)],
+                    rEst : [TSV(Float)], speedEst : TSV(Dist(Float)),
+                    saObs : [TSV(Float)]) : Pos {
 
-  sample posPrev ~ value(prior)
+  sample posPrev ~ prior
   sample sigma ~ Gamma(0.5, 1.0)
   sample v ~ value(speedEst)
 
@@ -448,7 +449,7 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), fcEst : [TSV(Float)],
   var inBounds : Pos -> Bool = withinRoomBounds(m)
   loop for s in sensorData {
     loop for tsv in s.obs {
-      var distTravelled = v * timestampToSeconds(subInt(timestamp(tsv), timestamp(prior)))
+      var distTravelled = v * timestampToSeconds(subInt(timestamp(tsv), priorTs))
       var pos = computePos(posPrev, distTravelled, turnRadius, sa)
       var expectedDist = estimateDistance(s.ofs, s.maxAngle, pos, inBounds)
       cond expectedDist if expectedDist > s.maxRange {
@@ -459,11 +460,12 @@ model positionModel(m : RoomMap, prior : TSV(Dist(Pos)), fcEst : [TSV(Float)],
     }
   }
 
-  var dist = v * timestampToSeconds(subInt(0, timestamp(prior)))
+  var dist = v * timestampToSeconds(subInt(0, priorTs))
   var pos = computePos(posPrev, dist, turnRadius, sa)
   cond if not(carWithinRoomBounds(m, pos)) {
     degenerate
   } else {}
+  resample
   return pos
 }
 
@@ -481,9 +483,6 @@ template PositionEstimate(period : Int) {
     d = tsv(0, d),
     speed = tsv(0, initSpeed)
   }
-  infer positionModel(m, acc.d, [], [], [], acc.speed, [tsv(0, 0.0)])
-    to d
-  acc.d = tsv(0, d)
   loop acc {
     write value(acc.d) to posEst
     delay period
@@ -495,7 +494,13 @@ template PositionEstimate(period : Int) {
     printLengths([|fcEst|, |lEst|, |rEst|, |speedEst|, |saObs|])
     acc.speed = maxDistFloatTimestamp(acc.speed, speedEst)
     cond acc if gtInt(|saObs|, 0) {
-      infer positionModel(m, acc.d, fcEst, lEst, rEst, acc.speed, saObs) to d
+      // NOTE(larshum, 2023-10-24): The below lines are added to allow the
+      // distribution reuse optimization to apply. For some reason, these
+      // non-constant operations are included in the model code.
+      var dist = value(acc.d)
+      var distTs = timestamp(acc.d)
+      var speed = acc.speed
+      infer positionModel(m, dist, distTs, fcEst, lEst, rEst, speed, saObs) to d
       acc.d = tsv(0, d)
     } else {}
   }
