@@ -663,12 +663,12 @@ system {
   // Tasks
   // We define periodic tasks, where the first argument to each task template
   // denotes the period of the respective tasks.
-  task speedEst = SpeedEst(500ms) importance 2
+  task speedEst = SpeedEst(500ms) importance 10
   task distance_FC = SensorDistance(500ms) importance 0
   task distance_SL = SensorDistance(500ms) importance 0
   task distance_SR = SensorDistance(500ms) importance 0
-  task pos = PositionEstimate(1s) importance 4
-  task braking = BrakeEstimate(500ms) importance 1
+  task pos = PositionEstimate(1s) importance 40
+  task braking = BrakeEstimate(500ms) importance 10
 
   // Speed estimation inputs
   speedLeft -> speedEst.lspeed
