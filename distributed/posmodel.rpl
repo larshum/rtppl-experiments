@@ -296,11 +296,11 @@ def cmpFloat(l : Float, r : Float) : Int {
   return acc
 }
 
-def medianOfLastThreeFloatTsv(tsvs : [TSV(Float)]) : Float {
+def medianOfLastThreeFloatTsv(tsvs : [TSV(Float)]) : TSV(Float) {
   var n = |tsvs|
   var lastThree = [tsvs[subInt(n, 3)], tsvs[subInt(n, 2)], tsvs[subInt(n, 1)]]
   var sorted = sort(cmpFloatTsvValue, lastThree)
-  return value(sorted[1])
+  return sorted[1]
 }
 
 template SensorDistance(period : Int) {
@@ -314,7 +314,7 @@ template SensorDistance(period : Int) {
     lastObs = takeNMostRecentFloat(concat(lastObs, obs), 3)
     cond if geqInt(|lastObs|, 3) {
       var res = medianOfLastThreeFloatTsv(lastObs)
-      write clamp(res, 0.0, tofMaxRange) to distEst
+      write clamp(value(res), 0.0, tofMaxRange) to distEst offset timestamp(res)
     } else {}
   }
 }
