@@ -1,6 +1,16 @@
 import math
 import struct
 
+def compute_expected(v):
+    x = 0.0
+    y = 0.0
+    d = 0.0
+    for w, values in v:
+        x = x + w * values[0]
+        y = y + w * values[1]
+        d = d + w * values[2]
+    return x, y, d
+
 def read_dists(f, nfields):
     try:
         with open(f, mode="rb") as file:
