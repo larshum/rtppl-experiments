@@ -165,6 +165,17 @@ def carAtMaxSpeed(tsvs : [TSV(Float)]) : Bool {
   return gtInt(|tsvs|, 0) && maxSpeed
 }
 
+def clamp(value : Float, lo : Float, hi : Float) : Float {
+  cond value if value < lo {
+    value = lo
+  } else {
+    cond value if value > hi {
+      value = hi
+    } else {}
+  }
+  return value
+}
+
 // NOTE(larshum, 2023-06-12): The speed model uses three distinct states to
 // describe the speed of the car. We make this simplification as the physical
 // car reaches it maximum speed in such a short amount of time that it is not
@@ -186,9 +197,10 @@ model speedModel(tsvs : [TSV(Float)]) : Float {
     } else {
       // NOTE(larshum, 2023-06-19): In case we observed at least one speed at
       // or close to zero, we are uncertain about the actual speed of the car.
-      // Therefore, we use a unfiorm distribution in our belief of the true
-      // range of speeds of the car.
-      sample v ~ Uniform(0.0, maxSpeed)
+      // We assume the true (average) speed is normally distributed around half
+      // the maximum speed.
+      sample v ~ Gaussian(maxSpeed / 2.0, 0.1)
+      v = clamp(v, 0.0, maxSpeed)
     }
   }
   return v
@@ -231,17 +243,6 @@ template SpeedEst(period : Int) {
       write d to speed
     } else {}
   }
-}
-
-def clamp(value : Float, lo : Float, hi : Float) : Float {
-  cond value if value < lo {
-    value = lo
-  } else {
-    cond value if value > hi {
-      value = hi
-    } else {}
-  }
-  return value
 }
 
 def maxValue(s : [TSV(Float)]) : Float {
@@ -632,7 +633,7 @@ template BrakeEstimate(period : Int) {
       // If the median distance until crash is estimated to be less than the
       // distance travelled until the next brake estimation, we activate the
       // brakes.
-      cond if mv < v * timestampToSeconds(period) {
+      cond if mv < 0.35 {
         write 0.0 to brake
       } else {}
     } else {}
