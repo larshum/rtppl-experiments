@@ -657,9 +657,10 @@ system {
   // inputs.
   actuator brake : Float
 
-  // Actuator to record the estimated position. Technically not part of the
-  // model, but we use it for debugging purposes.
+  // Actuators for recording the estimated positions and the activation of the
+  // emergency brakes.
   actuator posDebug : Dist(Pos)
+  actuator brakeDebug : Float
 
   // Tasks
   // We define periodic tasks, where the first argument to each task template
@@ -699,4 +700,5 @@ system {
   // model, but which we only use to record the sensor inputs and the position
   // estimates.
   pos.posEst -> posDebug
+  braking.brake -> brakeDebug
 }
