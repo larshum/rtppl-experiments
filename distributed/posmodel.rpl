@@ -81,7 +81,7 @@ def positionAtOffset(p : Pos, ofs : Offset) : Pos {
 def withinRoomBounds(m : RoomMap, p : Pos) : Bool {
   var c : Coordinate = posToCoordinate(p)
   var res : Bool = true
-  cond res if ltInt(c.row, 0) || geqInt(c.row, m.rows) || ltInt(c.col, 0) || geqInt(c.col, m.cols) {
+  if ltInt(c.row, 0) || geqInt(c.row, m.rows) || ltInt(c.col, 0) || geqInt(c.col, m.cols) update res {
     res = false
   } else {
     res = not(m.data[c.row][c.col])
@@ -98,8 +98,8 @@ def carWithinRoomBounds(m : RoomMap, center : Pos) : Bool {
     sideLeftOffset, sideRightOffset
   ]
   var acc : Bool = true
-  loop acc for ofs in sensorOffsets {
-    cond acc if acc {
+  for ofs in sensorOffsets update acc {
+    if acc update acc {
       var p : Pos = positionAtOffset(center, ofs)
       acc = withinRoomBounds(m, p)
     } else {}
@@ -114,10 +114,10 @@ def timestampToSeconds(ts : Int) : Float {
 
 def cmpFloatTimestamp(l : TSV(Float), r : TSV(Float)) : Int {
   var acc = 0
-  cond acc if gtInt(timestamp(l), timestamp(r)) {
+  if gtInt(timestamp(l), timestamp(r)) update acc {
     acc = 1
   } else {
-    cond acc if ltInt(timestamp(l), timestamp(r)) {
+    if ltInt(timestamp(l), timestamp(r)) update acc {
       acc = negInt(1)
     } else {}
   }
@@ -126,10 +126,10 @@ def cmpFloatTimestamp(l : TSV(Float), r : TSV(Float)) : Int {
 
 def cmpFloatTsvValue(l : TSV(Float), r : TSV(Float)) : Int {
   var acc = 0
-  cond acc if value(l) > value(r) {
+  if value(l) > value(r) update acc {
     acc = 1
   } else {
-    cond acc if value(l) < value(r) {
+    if value(l) < value(r) update acc {
       acc = negInt(1)
     } else {}
   }
@@ -144,8 +144,8 @@ model initSpeedModel() : Float {
 // observed speeds are zero.
 def carIsStationary(tsvs : [TSV(Float)]) : Bool {
   var stationary = true
-  loop stationary for tsv in tsvs {
-    cond stationary if value(tsv) != 0.0 {
+  for tsv in tsvs update stationary {
+    if value(tsv) != 0.0 update stationary {
       stationary = false
     } else {}
   }
@@ -157,23 +157,23 @@ def carIsStationary(tsvs : [TSV(Float)]) : Bool {
 // real data.
 def carAtMaxSpeed(tsvs : [TSV(Float)]) : Bool {
   var maxSpeed = true
-  loop maxSpeed for tsv in tsvs {
-    cond maxSpeed if value(tsv) <= 45.0 {
+  for tsv in tsvs update maxSpeed {
+    if value(tsv) <= 45.0 update maxSpeed {
       maxSpeed = false
     } else {}
   }
   return gtInt(|tsvs|, 0) && maxSpeed
 }
 
-def clamp(value : Float, lo : Float, hi : Float) : Float {
-  cond value if value < lo {
-    value = lo
+def clamp(v : Float, lo : Float, hi : Float) : Float {
+  if v < lo update v {
+    v = lo
   } else {
-    cond value if value > hi {
-      value = hi
+    if v > hi update v {
+      v = hi
     } else {}
   }
-  return value
+  return v
 }
 
 // NOTE(larshum, 2023-06-12): The speed model uses three distinct states to
@@ -183,14 +183,14 @@ def clamp(value : Float, lo : Float, hi : Float) : Float {
 // deceleration.
 model speedModel(tsvs : [TSV(Float)]) : Float {
   var v = 0.0
-  cond v if carIsStationary(tsvs) {
+  if carIsStationary(tsvs) update v {
     // NOTE(larshum, 2023-06-15): When the car is considered stationary, we
     // assume the speed is exactly zero. As the car reports speeds below 10 RPM
     // as zero, this may be slightly inaccurate. However, at such low speeds,
     // this should not make a big difference.
     v = 0.0
   } else {
-    cond v if carAtMaxSpeed(tsvs) {
+    if carAtMaxSpeed(tsvs) update v {
       // NOTE(larshum, 2023-06-16): We assume the car is driving at its max
       // speed, which we estimated based on measurement on the car.
       sample v ~ Gaussian(0.64, 0.1)
@@ -207,10 +207,10 @@ model speedModel(tsvs : [TSV(Float)]) : Float {
 }
 
 def takeNMostRecentFloat(a : [TSV(Float)], n : Int) : [TSV(Float)] {
-  cond a if gtInt(|a|, n) {
+  if gtInt(|a|, n) update a {
     a = sort(cmpFloatTimestamp, a)
     var res = []
-    loop res for i in range(0, n) {
+    for i in range(0, n) update res {
       res = push(res, a[subInt(|a|, subInt(n, i))])
     }
     a = res
@@ -220,7 +220,7 @@ def takeNMostRecentFloat(a : [TSV(Float)], n : Int) : [TSV(Float)] {
 
 def printLengths(lens : [Int]) : Unit {
   print("[")
-  loop for len in lens {
+  for len in lens {
     print(intToString(len))
     print(",")
   }
@@ -232,13 +232,13 @@ template SpeedEst(period : Int) {
   input rspeed : Float
   output speed : Dist(Float)
   infer initSpeedModel() to initSpeed
-  loop {
+  while true {
     delay period
     read lspeed to lObs
     read rspeed to rObs
     printLengths([|lObs|, |rObs|])
     obs = sort(cmpFloatTimestamp, concat(lObs, rObs))
-    cond if gtInt(|obs|, 0) {
+    if gtInt(|obs|, 0) {
       infer speedModel(obs) to d
       write d to speed
     } else {}
@@ -247,9 +247,9 @@ template SpeedEst(period : Int) {
 
 def maxValue(s : [TSV(Float)]) : Float {
   var acc = neginf
-  loop acc for x in s {
+  for x in s update acc {
     var v = value(x)
-    cond acc if v > acc {
+    if v > acc update acc {
       acc = v
     } else {}
   }
@@ -258,9 +258,9 @@ def maxValue(s : [TSV(Float)]) : Float {
 
 def minValue(s : [TSV(Float)]) : Float {
   var acc = inf
-  loop acc for x in s {
+  for x in s update acc {
     var v = value(x)
-    cond acc if v < acc {
+    if v < acc update acc {
       acc = v
     } else {}
   }
@@ -268,8 +268,8 @@ def minValue(s : [TSV(Float)]) : Float {
 }
 
 def maxDistPosTimestamp(acc : TSV(Dist(Pos)), tsvs : [TSV(Dist(Pos))]) : TSV(Dist(Pos)) {
-  loop acc for tsv in tsvs {
-    cond acc if ltInt(timestamp(acc), timestamp(tsv)) {
+  for tsv in tsvs update acc {
+    if ltInt(timestamp(acc), timestamp(tsv)) update acc {
       acc = tsv
     } else {}
   }
@@ -277,8 +277,8 @@ def maxDistPosTimestamp(acc : TSV(Dist(Pos)), tsvs : [TSV(Dist(Pos))]) : TSV(Dis
 }
 
 def maxDistFloatTimestamp(acc : TSV(Dist(Float)), tsvs : [TSV(Dist(Float))]) : TSV(Dist(Float)) {
-  loop acc for tsv in tsvs {
-    cond acc if ltInt(timestamp(acc), timestamp(tsv)) {
+  for tsv in tsvs update acc {
+    if ltInt(timestamp(acc), timestamp(tsv)) update acc {
       acc = tsv
     } else {}
   }
@@ -287,10 +287,10 @@ def maxDistFloatTimestamp(acc : TSV(Dist(Float)), tsvs : [TSV(Dist(Float))]) : T
 
 def cmpFloat(l : Float, r : Float) : Int {
   var acc = 0
-  cond acc if l > r {
+  if l > r update acc {
     acc = 1
   } else {
-    cond acc if l < r {
+    if l < r update acc {
       acc = negInt(1)
     } else {}
   }
@@ -308,12 +308,12 @@ template SensorDistance(period : Int) {
   input distObs : Float
   output distEst : Float
   var lastObs = []
-  loop lastObs {
+  while true update lastObs {
     delay period
     read distObs to obs
     printLengths([|obs|])
     lastObs = takeNMostRecentFloat(concat(lastObs, obs), 3)
-    cond if geqInt(|lastObs|, 3) {
+    if geqInt(|lastObs|, 3) {
       var res = medianOfLastThreeFloatTsv(lastObs)
       write clamp(value(res), 0.0, tofMaxRange) to distEst offset timestamp(res)
     } else {}
@@ -337,12 +337,12 @@ def estimateDistance(ofs : Offset, coneAngle : Float, p : Pos,
   p2.direction = p1.direction + coneAngle
   p3.direction = p1.direction - coneAngle
   var acc = {d = 0.0, p1 = p1, p2 = p2, p3 = p3}
-  loop acc while inBounds(acc.p1) && inBounds(acc.p2) && inBounds(acc.p3) {
+  while inBounds(acc.p1) && inBounds(acc.p2) && inBounds(acc.p3) update acc {
     var p1 = acc.p1
     p1.x = p1.x + eps * cos(p1.direction)
     p1.y = p1.y + eps * sin(p1.direction)
     acc.p1 = p1
-    cond acc if coneAngle == 0.0 {
+    if coneAngle == 0.0 update acc {
       acc.p2 = p1
       acc.p3 = p1
     } else {
@@ -365,7 +365,8 @@ def computePos(p0 : Pos, l : Float, r : Float, steeringAngle : Float) : Pos {
   // line. In this case, just update x and y based on the direction it is
   // travelling in. Otherwise, the car will drive along the arc of a circle, so
   // we estimate the position it ends up in.
-  cond p1 if steeringAngle == 0.0 {
+  var p1 = {x = 0.0, y = 0.0, direction = 0.0}
+  if steeringAngle == 0.0 update p1 {
     p1 = {
       x = p0.x + l * cos(p0.direction),
       y = p0.y + l * sin(p0.direction),
@@ -374,7 +375,7 @@ def computePos(p0 : Pos, l : Float, r : Float, steeringAngle : Float) : Pos {
   } else {
     // If steering angle is negative, we are steering counterclockwise.
     var d = p0.direction
-    cond p1 if steeringAngle < 0.0 {
+    if steeringAngle < 0.0 update p1 {
       p1 = {
         x = p0.x + r * (sin(d) - sin(d - l / r)),
         y = p0.y + r * (cos(d - l / r) - cos(d)),
@@ -403,7 +404,8 @@ def computeSpread(saObs : [TSV(Float)]) : Float {
 // and, based on observed data, we estimate the true steering of the car.
 model estimateSteering(saObs : [TSV(Float)]) : {sa : Float, turnRadius : Float} {
   var lastObs = value(saObs[subInt(|saObs|, 1)])
-  cond steerCoeff if lastObs > 0.0 {
+  var steerCoeff = 0.0
+  if lastObs > 0.0 update steerCoeff {
     steerCoeff = 0.2
   } else {
     steerCoeff = 0.243
@@ -414,7 +416,7 @@ model estimateSteering(saObs : [TSV(Float)]) : {sa : Float, turnRadius : Float} 
   sample sa ~ Gaussian(0.03 - steerRate * steerCoeff, variance)
 
   var tr = wheelbase / tan(sa)
-  cond tr if tr < 0.0 {
+  if tr < 0.0 update tr {
     tr = 0.0 - tr
   } else {}
 
@@ -434,13 +436,6 @@ model positionModel(m : RoomMap, prior : Dist(Pos), priorTs : Int,
   var sa = steer.sa
   var turnRadius = steer.turnRadius
 
-  // NOTE(larshum, 2023-05-25): We always consider sensor data from the
-  // time-of-flight (light-based) sensors, as these seem to be accurate in any
-  // situation where they are within their maximum range. The ultrasonic
-  // sensors do not work well when looking at a wall from an angle. Therefore,
-  // we ignore these sensors unless the difference between the distance
-  // observed by the respective pairs of ultrasonic sensors (front and rear) at
-  // our estimated current position is sufficiently small.
   var sensorData : [SensorData] = [
     { ofs = sideLeftOffset, obs = lEst, maxRange = tofMaxRange, maxAngle = tofMaxAngle },
     { ofs = sideRightOffset, obs = rEst, maxRange = tofMaxRange, maxAngle = tofMaxAngle },
@@ -448,14 +443,12 @@ model positionModel(m : RoomMap, prior : Dist(Pos), priorTs : Int,
   ]
 
   var inBounds : Pos -> Bool = withinRoomBounds(m)
-  loop for s in sensorData {
-    loop for tsv in s.obs {
+  for s in sensorData {
+    for tsv in s.obs {
       var distTravelled = v * timestampToSeconds(subInt(timestamp(tsv), priorTs))
       var pos = computePos(posPrev, distTravelled, turnRadius, sa)
       var expectedDist = estimateDistance(s.ofs, s.maxAngle, pos, inBounds)
-      cond expectedDist if expectedDist > s.maxRange {
-        expectedDist = s.maxRange
-      } else {}
+      expectedDist = clamp(expectedDist, 0.0, s.maxRange)
       var estDist = value(tsv)
       observe estDist ~ Gaussian(expectedDist, sigma)
     }
@@ -463,7 +456,7 @@ model positionModel(m : RoomMap, prior : Dist(Pos), priorTs : Int,
 
   var dist = v * timestampToSeconds(subInt(0, priorTs))
   var pos = computePos(posPrev, dist, turnRadius, sa)
-  cond if not(carWithinRoomBounds(m, pos)) {
+  if not(carWithinRoomBounds(m, pos)) {
     degenerate
   } else {}
   resample
@@ -484,7 +477,7 @@ template PositionEstimate(period : Int) {
     d = tsv(0, d),
     speed = tsv(0, initSpeed)
   }
-  loop acc {
+  while true update acc {
     write value(acc.d) to posEst
     delay period
     read frontCenter to fcEst
@@ -494,7 +487,7 @@ template PositionEstimate(period : Int) {
     read steeringAngle to saObs
     printLengths([|fcEst|, |lEst|, |rEst|, |speedEst|, |saObs|])
     acc.speed = maxDistFloatTimestamp(acc.speed, speedEst)
-    cond acc if gtInt(|saObs|, 0) {
+    if gtInt(|saObs|, 0) update acc {
       // NOTE(larshum, 2023-10-24): The below lines are added to allow the
       // distribution reuse optimization to apply. For some reason, these
       // non-constant operations are included in the model code.
@@ -513,7 +506,7 @@ def estimateDistanceOnCurve(ofs : Offset, p : Pos, inBounds : Pos -> Bool,
   // NOTE(larshum, 2023-06-21): If the steering angle is estimated as exactly
   // zero, we estimate the distance in a straight line. Otherwise, we traverse
   // the circle along which the car will drive.
-  cond res if steeringAngle == 0.0 {
+  if steeringAngle == 0.0 update res {
     res = estimateDistance(ofs, 0.0, p, inBounds)
   } else {
     var d = p.direction
@@ -523,20 +516,20 @@ def estimateDistanceOnCurve(ofs : Offset, p : Pos, inBounds : Pos -> Bool,
     // wall, assuming it keeps driving with the current steering angle, by
     // traversing the circumference of the circle along which it travels. To
     // ensure termination, we stop after a full lap around the circle.
-    loop acc while inBounds(acc.p) && acc.d < maxDistance {
+    while inBounds(acc.p) && acc.d < maxDistance update acc {
       var rate = acc.d / turnRadius
-      cond pnext if steeringAngle < 0.0 {
-        pnext = { x = p.x + turnRadius * (sin(d) - sin(d - rate))
+      if steeringAngle < 0.0 update acc {
+        acc.p = { x = p.x + turnRadius * (sin(d) - sin(d - rate))
                 , y = p.y + turnRadius * (cos(d - rate) - cos(d))
                 , direction = d - rate }
       } else {
-        pnext = { x = p.x + turnRadius * (sin(d + rate) - sin(d))
+        acc.p = { x = p.x + turnRadius * (sin(d + rate) - sin(d))
                 , y = p.y + turnRadius * (cos(d) - cos(d + rate))
                 , direction = d + rate }
       }
-      acc = {d = acc.d + eps, p = pnext}
+      acc.d = acc.d + eps
     }
-    cond res if inBounds(acc.p) {
+    if inBounds(acc.p) update res {
       res = maxDistance
     } else {
       res = acc.d
@@ -581,24 +574,13 @@ def medianValue(x : {s : [Float], w : [Float]}) : Float {
   var xs : [Float] = x.s
   s = sort(cmpFloat, xs)
   var res = 0.0
-  cond res if eqInt(remInt(|s|, 2), 0) {
+  if eqInt(remInt(|s|, 2), 0) update res {
     var mid = divInt(|s|, 2)
     res = (s[mid] + s[subInt(mid, 1)]) / 2.0
   } else {
     res = s[divInt(|s|, 2)]
   }
   return res
-}
-
-def expectedSpeed(x : {s : [Float], w : [Float]}) : Float {
-  var v = 0.0
-  var values = x.s
-  var weights = x.w
-  loop v for i in range(0, |values|) {
-    var w = exp(weights[i])
-    v = v + values[i] * w
-  }
-  return v
 }
 
 // The brake estimation determines how far ahead in terms of distance the car
@@ -618,7 +600,7 @@ template BrakeEstimate(period : Int) {
     speed = tsv(0, initSpeed),
     pos = tsv(0, d)
   }
-  loop acc {
+  while true update acc {
     delay period
     read pos to posEst
     read speed to speedEst
@@ -626,14 +608,13 @@ template BrakeEstimate(period : Int) {
     printLengths([|posEst|, |speedEst|, |saObs|])
     acc.pos = maxDistPosTimestamp(acc.pos, posEst)
     acc.speed = maxDistFloatTimestamp(acc.speed, speedEst)
-    cond acc if gtInt(|saObs|, 0) {
+    if gtInt(|saObs|, 0) {
       infer brakeDistanceModel(m, acc.pos, saObs, acc.speed) to d
       var mv = medianValue(samples d)
-      var v = expectedSpeed(samples value(acc.speed))
       // If the median distance until crash is estimated to be less than the
       // distance travelled until the next brake estimation, we activate the
       // brakes.
-      cond if mv < 0.35 {
+      if mv < 0.35 {
         write 0.0 to brake
       } else {}
     } else {}
