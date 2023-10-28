@@ -230,7 +230,7 @@ def printLengths(lens : [Int]) : Unit {
 template SpeedEstimate(period : Int) {
   input lspeed : Float
   input rspeed : Float
-  output speed : Dist(Float)
+  output speedEst : Dist(Float)
   infer initSpeedModel() to initSpeed
   while true {
     delay period
@@ -240,7 +240,7 @@ template SpeedEstimate(period : Int) {
     obs = sort(cmpFloatTimestamp, concat(lObs, rObs))
     if gtInt(|obs|, 0) {
       infer speedModel(obs) to d
-      write d to speed
+      write d to speedEst
     } else {}
   }
 }
@@ -467,7 +467,7 @@ template PositionEstimate(period : Int) {
   input frontCenter : Float
   input left : Float
   input right : Float
-  input speed : Dist(Float)
+  input speedEst : Dist(Float)
   input steeringAngle : Float
   output posEst : Dist(Pos)
   var m : RoomMap = readRoomMap()
@@ -483,10 +483,10 @@ template PositionEstimate(period : Int) {
     read frontCenter to fcEst
     read left to lEst
     read right to rEst
-    read speed to speedEst
+    read speedEst to speed
     read steeringAngle to saObs
-    printLengths([|fcEst|, |lEst|, |rEst|, |speedEst|, |saObs|])
-    acc.speed = maxDistFloatTimestamp(acc.speed, speedEst)
+    printLengths([|fcEst|, |lEst|, |rEst|, |speed|, |saObs|])
+    acc.speed = maxDistFloatTimestamp(acc.speed, speed)
     if gtInt(|saObs|, 0) update acc {
       // NOTE(larshum, 2023-10-24): The below lines are added to allow the
       // distribution reuse optimization to apply. For some reason, these
@@ -590,7 +590,7 @@ def medianValue(x : {s : [Float], w : [Float]}) : Float {
 // task will signal to activate the emergency brakes.
 template BrakeEstimate(period : Int) {
   input pos : Dist(Pos)
-  input speed : Dist(Float)
+  input speedEst : Dist(Float)
   input steeringAngle : Float
   output brake : Float
   var m : RoomMap = readRoomMap()
@@ -603,11 +603,11 @@ template BrakeEstimate(period : Int) {
   while true update acc {
     delay period
     read pos to posEst
-    read speed to speedEst
+    read speedEst to speed
     read steeringAngle to saObs
-    printLengths([|posEst|, |speedEst|, |saObs|])
+    printLengths([|posEst|, |speed|, |saObs|])
     acc.pos = maxDistPosTimestamp(acc.pos, posEst)
-    acc.speed = maxDistFloatTimestamp(acc.speed, speedEst)
+    acc.speed = maxDistFloatTimestamp(acc.speed, speed)
     if gtInt(|saObs|, 0) {
       infer brakeDistanceModel(m, acc.pos, saObs, acc.speed) to d
       var mv = medianValue(samples d)
@@ -638,10 +638,8 @@ system {
   // inputs.
   actuator brake : Float
 
-  // Actuators for recording the estimated positions and the activation of the
-  // emergency brakes.
+  // Debug actuators
   actuator posDebug : Dist(Pos)
-  actuator brakeDebug : Float
 
   // Tasks
   // We define periodic tasks, where the first argument to each task template
@@ -666,11 +664,11 @@ system {
   distance_FC.distEst -> pos.frontCenter
   distance_SL.distEst -> pos.left
   distance_SR.distEst -> pos.right
-  speed.speed -> pos.speed
+  speed.speedEst -> pos.speedEst
   steeringAngle -> pos.steeringAngle
 
   // Brake estimation inputs
-  speed.speed -> braking.speed
+  speed.speedEst -> braking.speedEst
   steeringAngle -> braking.steeringAngle
   pos.posEst -> braking.pos
 
@@ -678,8 +676,6 @@ system {
   braking.brake -> brake
 
   // Connections to debug actuators which do not consider to be part of the
-  // model, but which we only use to record the sensor inputs and the position
-  // estimates.
+  // model, but which we only use to record extra information.
   pos.posEst -> posDebug
-  braking.brake -> brakeDebug
 }
