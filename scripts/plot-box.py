@@ -11,7 +11,7 @@ import dist
 true_x = 2.41
 true_y = 6.66
 
-pcs = [100, 1000, 10000]#, 100000]
+pcs = [100, 1000, 10000, 100000]
 D = []
 for p in pcs:
     data = []
