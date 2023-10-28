@@ -614,7 +614,7 @@ template BrakeEstimate(period : Int) {
       // If the median distance until crash is estimated to be less than the
       // distance travelled until the next brake estimation, we activate the
       // brakes.
-      if mv < 0.35 {
+      if mv < 0.4 {
         write 0.0 to brake
       } else {}
     } else {}
