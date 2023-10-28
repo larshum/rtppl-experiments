@@ -227,7 +227,7 @@ def printLengths(lens : [Int]) : Unit {
   printLn("]")
 }
 
-template SpeedEst(period : Int) {
+template SpeedEstimate(period : Int) {
   input lspeed : Float
   input rspeed : Float
   output speed : Dist(Float)
@@ -646,7 +646,7 @@ system {
   // Tasks
   // We define periodic tasks, where the first argument to each task template
   // denotes the period of the respective tasks.
-  task speedEst = SpeedEst(500ms) importance 10
+  task speed = SpeedEstimate(500ms) importance 10
   task distance_FC = SensorDistance(500ms) importance 0
   task distance_SL = SensorDistance(500ms) importance 0
   task distance_SR = SensorDistance(500ms) importance 0
@@ -654,8 +654,8 @@ system {
   task braking = BrakeEstimate(500ms) importance 10
 
   // Speed estimation inputs
-  speedLeft -> speedEst.lspeed
-  speedRight -> speedEst.rspeed
+  speedLeft -> speed.lspeed
+  speedRight -> speed.rspeed
 
   // Distance estimation inputs
   frontCenter -> distance_FC.distObs
@@ -666,11 +666,11 @@ system {
   distance_FC.distEst -> pos.frontCenter
   distance_SL.distEst -> pos.left
   distance_SR.distEst -> pos.right
-  speedEst.speed -> pos.speed
+  speed.speed -> pos.speed
   steeringAngle -> pos.steeringAngle
 
   // Brake estimation inputs
-  speedEst.speed -> braking.speed
+  speed.speed -> braking.speed
   steeringAngle -> braking.steeringAngle
   pos.posEst -> braking.pos
 
