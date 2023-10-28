@@ -13,10 +13,13 @@ else:
     true_y = None
 if os.path.isfile(path):
     pos_dists = sorted(dist.read_dists(path, 3))
-    for ts, v in pos_dists:
-        x, y, d = dist.compute_expected(v)
-        print(f"{ts} | {x} {y} {d} ({len(v)})")
+else:
+    exit(1)
 if true_x is not None:
     _, lastv = pos_dists[-1]
     x, y, _ = dist.compute_expected(lastv)
-    print(f"Error: {sqrt((x-true_x)**2+(y-true_y)**2)}")
+    print(f"{sqrt((x-true_x)**2+(y-true_y)**2)}")
+else:
+    for ts, v in pos_dists:
+        x, y, d = dist.compute_expected(v)
+        print(f"{ts} | {x} {y} {d} ({len(v)})")
