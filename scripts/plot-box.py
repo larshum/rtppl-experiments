@@ -8,8 +8,8 @@ import math
 
 import dist
 
-true_x = 2.41
-true_y = 6.66
+true_x = 2.6
+true_y = 5.72
 
 pcs = [100, 1000, 10000, 100000]
 D = []
@@ -22,7 +22,7 @@ for p in pcs:
         eucd = math.sqrt((x-true_x)**2+(y-true_y)**2)
         data.append(eucd)
     D.append(data)
-labels = list(map(str, pcs))
+labels = ["$10^2$", "$10^3$", "$10^4$", "$10^5$"]
 
 fig, axs = plt.subplots(nrows=1, ncols=2, layout="constrained")
 axs[0].boxplot(D, labels = labels)
@@ -35,14 +35,14 @@ barw = 0.2
 multiple = 0
 
 tasks = {
-    "speedEst": [],
+    "speed": [],
     "pos": [],
     "braking": []
 }
 for p in pcs:
     with open(f"measurements/{p}-particles/wcets.txt", "r") as f:
         s, p, b = f.read().strip().split(" ")
-        tasks["speedEst"].append(float(s)/1e9)
+        tasks["speed"].append(float(s)/1e9)
         tasks["pos"].append(float(p)/1e9)
         tasks["braking"].append(float(b)/1e9)
 
@@ -56,4 +56,6 @@ axs[1].set_ylabel("WCET (s)")
 axs[1].set_yscale("log")
 axs[1].legend(loc="upper left")
 
+fig.set_figwidth(6.4)
+fig.set_figheight(3.2)
 fig.savefig("pos-convergence.pdf",bbox_inches="tight")
