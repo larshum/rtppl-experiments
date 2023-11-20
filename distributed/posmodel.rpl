@@ -8,7 +8,7 @@ type Pos = { x : Float, y : Float, direction : Float }
 
 type Offset = { angle : Float, distance : Float, direction : Float }
 
-type SensorData = { ofs : Offset, obs : [TSV(Float)], maxRange : Float }
+type SensorData = { ofs : Offset, obs : [TSV(Float)], maxRange : Float, maxAngle : Float }
 
 const pi : Float = 4.0 * atan(1.0)
 const roomBlockWidth : Float = 0.1
