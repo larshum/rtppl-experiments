@@ -1,6 +1,0 @@
-pos 1
-braking 2
-speedEst 3
-distance_FC 3
-distance_SL 3
-distance_SR 3
