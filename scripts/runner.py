@@ -202,6 +202,9 @@ if args.replay:
     os.chdir(original_path)
     rec_thread = threading.Thread(target=record_messages, args=[debug_files])
     rec_thread.start()
+    if not os.path.isdir(args.replay):
+        print("Directory containing replayed data does not exist")
+        exit(1)
     replay_messages(args.replay, path, nw["sensor_outs"].items(), args.slowdown)
     time.sleep(1)
     for proc in procs:
