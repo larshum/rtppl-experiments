@@ -53,7 +53,7 @@ def replay_messages(replay_path, target_path, sensor_outputs, slowdown):
             with open(f"{replay_path}/{s}-sensor", "rb") as f:
                 data = f.read()
                 for dst in dsts:
-                    dst_fd = mmio.open_file(dst)
+                    dst_fd = mmio.ProbTimeIO(dst)
                     msgs.append((dst_fd, data))
         except:
             print(f"Could not find recorded data for sensor {s}")
@@ -80,12 +80,12 @@ def replay_messages(replay_path, target_path, sensor_outputs, slowdown):
                 time.sleep((t_delay - exec_time) / 1e9)
             ts = start_time + (t1 - t0)
             msg = struct.pack("=q", ts) + payload
-            mmio.write_message(fd, msg)
+            fd.write_message(msg)
 
     # Close the output files before quitting
     fds = set([fd for fd, _, _ in out_data])
     for fd in fds:
-        mmio.close_file(fd)
+        fd.close()
 
 def record_messages(debug_files):
     if len(debug_files) == 0:
@@ -93,7 +93,7 @@ def record_messages(debug_files):
     else:
         while running:
             for shm, f in debug_files:
-                msgs = mmio.read_messages(shm)
+                msgs = shm.read_messages()
                 for msg in msgs:
                     szbytes = struct.pack("=q", len(msg))
                     f.write(szbytes)
@@ -136,7 +136,7 @@ def handler(sig, frame):
             proc.terminate()
             proc.wait()
     for shm, f in debug_files:
-        mmio.close_file(shm)
+        shm.close()
         f.close()
     for task in nw["tasks"]:
         t = task["id"]
@@ -191,11 +191,11 @@ if args.record:
         if a == "brake":
             pass
         else:
-            shm = mmio.open_file(a)
+            shm = mmio.ProbTimeIO(a)
             fd = open(f"{a}-actuator", "wb")
             debug_files.append((shm, fd))
     for s, _ in nw["sensor_outs"].items():
-        shm = mmio.open_file(f"debug-{s}")
+        shm = mmio.ProbTimeIO(f"debug-{s}")
         fd = open(f"{s}-sensor", "wb")
         debug_files.append((shm, fd))
 if args.replay:

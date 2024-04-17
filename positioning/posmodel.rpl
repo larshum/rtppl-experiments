@@ -232,8 +232,7 @@ template SpeedEstimate(period : Int) {
   input rspeed : Float
   output speedEst : Dist(Float)
   infer initSpeedModel() to initSpeed
-  while true {
-    delay period
+  periodic period {
     read lspeed to lObs
     read rspeed to rObs
     printLengths([|lObs|, |rObs|])
@@ -308,8 +307,7 @@ template SensorDistance(period : Int) {
   input distObs : Float
   output distEst : Float
   var lastObs = []
-  while true update lastObs {
-    delay period
+  periodic period update lastObs {
     read distObs to obs
     printLengths([|obs|])
     lastObs = takeNMostRecentFloat(concat(lastObs, obs), 3)
@@ -477,9 +475,7 @@ template PositionEstimate(period : Int) {
     d = tsv(0, d),
     speed = tsv(0, initSpeed)
   }
-  while true update acc {
-    write value(acc.d) to posEst
-    delay period
+  periodic period update acc {
     read frontCenter to fcEst
     read left to lEst
     read right to rEst
@@ -497,6 +493,7 @@ template PositionEstimate(period : Int) {
       infer positionModel(m, dist, distTs, fcEst, lEst, rEst, speed, saObs) to d
       acc.d = tsv(0, d)
     } else {}
+    write value(acc.d) to posEst
   }
 }
 
@@ -600,8 +597,7 @@ template BrakeEstimate(period : Int) {
     speed = tsv(0, initSpeed),
     pos = tsv(0, d)
   }
-  while true update acc {
-    delay period
+  periodic period update acc {
     read pos to posEst
     read speedEst to speed
     read steeringAngle to saObs
