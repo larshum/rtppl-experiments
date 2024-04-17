@@ -10,6 +10,8 @@ type Offset = { angle : Float, distance : Float, direction : Float }
 
 type SensorData = { ofs : Offset, obs : [TSV(Float)], maxRange : Float, maxAngle : Float }
 
+type SpeedEst = { mu : Float, sigma : Float }
+
 const pi : Float = 4.0 * atan(1.0)
 const roomBlockWidth : Float = 0.1
 const wheelCircumference : Float = 0.33
@@ -176,36 +178,6 @@ def clamp(v : Float, lo : Float, hi : Float) : Float {
   return v
 }
 
-// NOTE(larshum, 2023-06-12): The speed model uses three distinct states to
-// describe the speed of the car. We make this simplification as the physical
-// car reaches it maximum speed in such a short amount of time that it is not
-// interesting to estimate exactly what its speed is in-between acceleration or
-// deceleration.
-model speedModel(tsvs : [TSV(Float)]) : Float {
-  var v = 0.0
-  if carIsStationary(tsvs) update v {
-    // NOTE(larshum, 2023-06-15): When the car is considered stationary, we
-    // assume the speed is exactly zero. As the car reports speeds below 10 RPM
-    // as zero, this may be slightly inaccurate. However, at such low speeds,
-    // this should not make a big difference.
-    v = 0.0
-  } else {
-    if carAtMaxSpeed(tsvs) update v {
-      // NOTE(larshum, 2023-06-16): We assume the car is driving at its max
-      // speed, which we estimated based on measurement on the car.
-      sample v ~ Gaussian(0.64, 0.1)
-    } else {
-      // NOTE(larshum, 2023-06-19): In case we observed at least one speed at
-      // or close to zero, we are uncertain about the actual speed of the car.
-      // We assume the true (average) speed is normally distributed around half
-      // the maximum speed.
-      sample v ~ Gaussian(maxSpeed / 2.0, 0.1)
-      v = clamp(v, 0.0, maxSpeed)
-    }
-  }
-  return v
-}
-
 def takeNMostRecentFloat(a : [TSV(Float)], n : Int) : [TSV(Float)] {
   if gtInt(|a|, n) update a {
     a = sort(cmpFloatTimestamp, a)
@@ -227,10 +199,16 @@ def printLengths(lens : [Int]) : Unit {
   printLn("]")
 }
 
+def printEst(est : SpeedEst) : Unit {
+  print(floatToString(est.mu))
+  print(", ")
+  printLn(floatToString(est.sigma))
+}
+
 template SpeedEstimate(period : Int) {
   input lspeed : Float
   input rspeed : Float
-  output speedEst : Dist(Float)
+  output speedEst : SpeedEst
   infer initSpeedModel() to initSpeed
   periodic period {
     read lspeed to lObs
@@ -238,8 +216,16 @@ template SpeedEstimate(period : Int) {
     printLengths([|lObs|, |rObs|])
     obs = sort(cmpFloatTimestamp, concat(lObs, rObs))
     if gtInt(|obs|, 0) {
-      infer speedModel(obs) to d
-      write d to speedEst
+      var est = {mu = 0.0, sigma = 0.001}
+      if carIsStationary(obs) update est {
+      } else {
+        if carAtMaxSpeed(obs) update est {
+          est = {mu = 0.64, sigma = 0.1}
+        } else {
+          est = {mu = maxSpeed / 2.0, sigma = 0.1}
+        }
+      }
+      write est to speedEst
     } else {}
   }
 }
@@ -275,7 +261,7 @@ def maxDistPosTimestamp(acc : TSV(Dist(Pos)), tsvs : [TSV(Dist(Pos))]) : TSV(Dis
   return acc
 }
 
-def maxDistFloatTimestamp(acc : TSV(Dist(Float)), tsvs : [TSV(Dist(Float))]) : TSV(Dist(Float)) {
+def maxSpeedEstTimestamp(acc : TSV(SpeedEst), tsvs : [TSV(SpeedEst)]) : TSV(SpeedEst) {
   for tsv in tsvs update acc {
     if ltInt(timestamp(acc), timestamp(tsv)) update acc {
       acc = tsv
@@ -423,12 +409,14 @@ model estimateSteering(saObs : [TSV(Float)]) : {sa : Float, turnRadius : Float} 
 
 model positionModel(m : RoomMap, prior : Dist(Pos), priorTs : Int,
                     fcEst : [TSV(Float)], lEst : [TSV(Float)],
-                    rEst : [TSV(Float)], speedEst : TSV(Dist(Float)),
+                    rEst : [TSV(Float)], speedEst : TSV(SpeedEst),
                     saObs : [TSV(Float)]) : Pos {
 
   sample posPrev ~ prior
   sample sigma ~ Gamma(0.5, 1.0)
-  sample v ~ value(speedEst)
+  var d = value(speedEst)
+  sample v ~ Gaussian(d.mu, d.sigma)
+  v = clamp(v, 0.0, maxSpeed)
 
   var steer = estimateSteering(saObs)
   var sa = steer.sa
@@ -465,15 +453,14 @@ template PositionEstimate(period : Int) {
   input frontCenter : Float
   input left : Float
   input right : Float
-  input speedEst : Dist(Float)
+  input speedEst : SpeedEst
   input steeringAngle : Float
   output posEst : Dist(Pos)
   var m : RoomMap = readRoomMap()
   infer initialPositionModel() to d
-  infer initSpeedModel() to initSpeed
   var acc = {
     d = tsv(0, d),
-    speed = tsv(0, initSpeed)
+    speed = tsv(0, {mu = maxSpeed / 2.0, sigma = maxSpeed / 2.0})
   }
   periodic period update acc {
     read frontCenter to fcEst
@@ -482,7 +469,7 @@ template PositionEstimate(period : Int) {
     read speedEst to speed
     read steeringAngle to saObs
     printLengths([|fcEst|, |lEst|, |rEst|, |speed|, |saObs|])
-    acc.speed = maxDistFloatTimestamp(acc.speed, speed)
+    acc.speed = maxSpeedEstTimestamp(acc.speed, speed)
     if gtInt(|saObs|, 0) update acc {
       // NOTE(larshum, 2023-10-24): The below lines are added to allow the
       // distribution reuse optimization to apply. For some reason, these
@@ -536,12 +523,14 @@ def estimateDistanceOnCurve(ofs : Offset, p : Pos, inBounds : Pos -> Bool,
 }
 
 model brakeDistanceModel(m : RoomMap, pos : TSV(Dist(Pos)), saObs : [TSV(Float)],
-                         speed : TSV(Dist(Float))) : Float {
+                         speed : TSV(SpeedEst)) : Float {
   // NOTE(larshum, 2023-06-19): Estimate the current position based on our most
   // recent estimates of the position and the speed, as well as the most
   // recently observed steering angle.
   sample p ~ value(pos)
-  sample v ~ value(speed)
+  var d = value(speed)
+  sample v ~ Gaussian(d.mu, d.sigma)
+  v = clamp(v, 0.0, maxSpeed)
   var dist = v * timestampToSeconds(subInt(0, timestamp(pos)))
   var currPos = {
     x = p.x + dist * cos(p.direction),
@@ -587,14 +576,13 @@ def medianValue(x : {s : [Float], w : [Float]}) : Float {
 // task will signal to activate the emergency brakes.
 template BrakeEstimate(period : Int) {
   input pos : Dist(Pos)
-  input speedEst : Dist(Float)
+  input speedEst : SpeedEst
   input steeringAngle : Float
   output brake : Float
   var m : RoomMap = readRoomMap()
   infer initialPositionModel() to d
-  infer initSpeedModel() to initSpeed
   var acc = {
-    speed = tsv(0, initSpeed),
+    speed = tsv(0, {mu = maxSpeed / 2.0, sigma = maxSpeed / 2.0}),
     pos = tsv(0, d)
   }
   periodic period update acc {
@@ -603,7 +591,7 @@ template BrakeEstimate(period : Int) {
     read steeringAngle to saObs
     printLengths([|posEst|, |speed|, |saObs|])
     acc.pos = maxDistPosTimestamp(acc.pos, posEst)
-    acc.speed = maxDistFloatTimestamp(acc.speed, speed)
+    acc.speed = maxSpeedEstTimestamp(acc.speed, speed)
     if gtInt(|saObs|, 0) {
       infer brakeDistanceModel(m, acc.pos, saObs, acc.speed) to d
       var mv = medianValue(samples d)
