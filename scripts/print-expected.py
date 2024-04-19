@@ -5,9 +5,10 @@ from math import sqrt
 
 posFile = "pos-posEst"
 path = sys.argv[1]
-if len(sys.argv) == 4:
-    true_x = float(sys.argv[2])
-    true_y = float(sys.argv[3])
+if len(sys.argv) == 3:
+    with open(sys.argv[2]) as f:
+        x, y = f.read().strip().split(" ")
+    true_x, true_y = int(x), int(y)
 else:
     true_x = None
     true_y = None
@@ -18,7 +19,10 @@ else:
 if true_x is not None:
     _, lastv = pos_dists[-1]
     x, y, _ = dist.compute_expected(lastv)
-    print(f"{sqrt((x-true_x)**2+(y-true_y)**2)}")
+    err_x = sqrt((x - true_x)**2)
+    err_y = sqrt((y - true_y)**2)
+    err = sqrt((x - true_x)**2 + (y - true_y)**2)
+    print(f"{err_x} {err_y} {err}")
 else:
     for ts, v in pos_dists:
         x, y, d = dist.compute_expected(v)

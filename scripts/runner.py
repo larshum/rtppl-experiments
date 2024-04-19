@@ -9,43 +9,12 @@ import sys
 import time
 import threading
 
-import network
 import mmio
+import system
 
 running = True
 
-def read_configuration(taskid):
-    try:
-        with open(f"{taskid}.config", "r") as f:
-            [p, b, s] = f.read().strip().split(" ")
-            return {"particles": int(p), "budget": int(b), "slowdown": int(s)}
-    except:
-        print(f"Configuration file not found for task {taskid}.")
-        exit(1)
-
-def write_configuration(taskid, config):
-    try:
-        with open(f"{taskid}.config", "w") as f:
-            f.write(f"{config['particles']} {config['budget']} {config['slowdown']}")
-    except:
-        print(f"Failed to update configuration file of task {taskid}.")
-        exit(1)
-
-def combine_tasks_with_core_mapping(tasks, task_to_core_map_file):
-    try:
-        with open(task_to_core_map_file, "r") as f:
-            ttcm = {}
-            for line in f.readlines():
-                [task, core] = line.strip().split(" ")
-                ttcm[task] = int(core)
-        for task in tasks:
-            task['core'] = ttcm[task['id']]
-    except FileNotFoundError:
-        for task in tasks:
-            task['core'] = 1
-    return tasks
-
-def replay_messages(replay_path, target_path, sensor_outputs, slowdown):
+def replay_messages(replay_path, target_path, sensor_outputs, slowdown, buffer_size):
     # Read the raw data from all sensor files
     msgs = []
     for s, dsts in sensor_outputs:
@@ -53,7 +22,7 @@ def replay_messages(replay_path, target_path, sensor_outputs, slowdown):
             with open(f"{replay_path}/{s}-sensor", "rb") as f:
                 data = f.read()
                 for dst in dsts:
-                    dst_fd = mmio.ProbTimeIO(dst)
+                    dst_fd = mmio.ProbTimeIO(dst, buffer_size)
                     msgs.append((dst_fd, data))
         except:
             print(f"Could not find recorded data for sensor {s}")
@@ -114,7 +83,9 @@ args = p.parse_args()
 map_file = args.map
 path = args.path
 
-nw = network.read_network(f"{path}/network.json")
+syspath = f"{path}/system.json"
+nw = system.read_system(syspath)
+buffer_size = nw["compileopts"]["buffer-size"]
 
 debug_files = []
 
@@ -124,7 +95,7 @@ def handler(sig, frame):
     print("Killing remaining processes")
     for proc in procs:
         if args.usage:
-            cmd = ["ps", "-p", str(proc.pid), "-o", "%cpu,%mem"]
+            cmd = ["ps", "-p", str(proc.pid), "-o", "%cpu"]
             p = subprocess.run(cmd, capture_output=True)
             print(proc.args, str(p.stdout))
         proc.send_signal(signal.SIGINT)
@@ -155,25 +126,23 @@ signal.signal(signal.SIGINT, handler)
 if args.replay:
     subprocess.run(["python3", "scripts/clean.py", "-p", path])
 
-original_path = os.getcwd()
-os.chdir(path)
-
-tasks = combine_tasks_with_core_mapping(nw["tasks"], "task-core-map.txt")
-
 if args.slowdown != 1 and not args.replay:
     print("A slowdown can only be used when replaying data")
     exit(1)
 
-# Update the configuration of each task to ensure they run with a
-# consistent slowdown (only applicable when replaying).
-for task in tasks:
-    taskid = task["id"]
-    cfg = read_configuration(taskid)
-    cfg["slowdown"] = args.slowdown
-    write_configuration(taskid, cfg)
+# Update the slowdown in the system configuration
+with open(syspath, "r+") as f:
+    data = json.load(f)
+    data["config"]["slowdown"] = args.slowdown
+    f.seek(0)
+    json.dump(data, f)
+    f.truncate()
+
+original_path = os.getcwd()
+os.chdir(path)
 
 priority = 99
-for task in tasks:
+for task in nw["tasks"]:
     cmd = [f"./{task['id']}", f"../{map_file}"]
     cmd = ["taskset", "-c", f"{task['core']}"] + cmd
     print(cmd)
@@ -191,11 +160,11 @@ if args.record:
         if a == "brake":
             pass
         else:
-            shm = mmio.ProbTimeIO(a)
+            shm = mmio.ProbTimeIO(a, buffer_size)
             fd = open(f"{a}-actuator", "wb")
             debug_files.append((shm, fd))
     for s, _ in nw["sensor_outs"].items():
-        shm = mmio.ProbTimeIO(f"debug-{s}")
+        shm = mmio.ProbTimeIO(f"debug-{s}", buffer_size)
         fd = open(f"{s}-sensor", "wb")
         debug_files.append((shm, fd))
 if args.replay:
@@ -205,7 +174,7 @@ if args.replay:
     if not os.path.isdir(args.replay):
         print("Directory containing replayed data does not exist")
         exit(1)
-    replay_messages(args.replay, path, nw["sensor_outs"].items(), args.slowdown)
+    replay_messages(args.replay, path, nw["sensor_outs"].items(), args.slowdown, buffer_size)
     time.sleep(1)
     for proc in procs:
         if proc.poll():

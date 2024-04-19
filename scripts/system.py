@@ -1,8 +1,8 @@
 import json
 
-def read_network(file):
-    with open(file) as f:
-        data = json.loads(f.read())
+def read_system(file):
+    with open(file, "r") as f:
+        data = json.load(f)
 
     tasks = sorted(data["tasks"], key=lambda x: x["period"])
 
@@ -30,5 +30,6 @@ def read_network(file):
         "tasks": tasks,
         "relays": relays,
         "sensor_outs": sensor_outs,
-        "actuator_ins": actuator_ins
+        "actuator_ins": actuator_ins,
+        "compileopts": data["compileopts"]
     }

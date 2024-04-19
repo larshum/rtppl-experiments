@@ -2,8 +2,6 @@ import os
 import subprocess
 import sys
 
-import network
-
 def write_line(f, targets):
     f.write(f"{len(targets)} {' '.join(targets)}\n")
 
