@@ -501,15 +501,15 @@ def estimateDistanceOnCurve(ofs : Offset, p : Pos, inBounds : Pos -> Bool,
     // traversing the circumference of the circle along which it travels. To
     // ensure termination, we stop after a full lap around the circle.
     while inBounds(acc.p) && acc.d < maxDistance update acc {
-      var rate = acc.d / turnRadius
+      var r = acc.d / turnRadius
       if steeringAngle < 0.0 update acc {
-        acc.p = { x = p.x + turnRadius * (sin(d) - sin(d - rate))
-                , y = p.y + turnRadius * (cos(d - rate) - cos(d))
-                , direction = d - rate }
+        acc.p = { x = p.x + turnRadius * (sin(d) - sin(d - r))
+                , y = p.y + turnRadius * (cos(d - r) - cos(d))
+                , direction = d - r }
       } else {
-        acc.p = { x = p.x + turnRadius * (sin(d + rate) - sin(d))
-                , y = p.y + turnRadius * (cos(d) - cos(d + rate))
-                , direction = d + rate }
+        acc.p = { x = p.x + turnRadius * (sin(d + r) - sin(d))
+                , y = p.y + turnRadius * (cos(d) - cos(d + r))
+                , direction = d + r }
       }
       acc.d = acc.d + eps
     }
@@ -607,33 +607,33 @@ template BrakeEstimate(period : Int) {
 
 system {
   // Distance sensors (payload contains distance in meters)
-  sensor frontCenter : Float
-  sensor sideLeft : Float
-  sensor sideRight : Float
+  sensor frontCenter : Float rate 200ms
+  sensor sideLeft : Float rate 200ms
+  sensor sideRight : Float rate 200ms
 
   // Wheel sensors
-  sensor speedLeft : Float // speed in RPM
-  sensor speedRight : Float // speed in RPM
-  sensor steeringAngle : Float // steering in degrees
+  sensor speedLeft : Float rate 250ms // speed in RPM
+  sensor speedRight : Float rate 250ms // speed in RPM
+  sensor steeringAngle : Float rate 250ms // steering in degrees
 
   // Brake actuator
   // Writing a value to this actuator (the payload is irrelevant) starts the
   // emergency brakes, running the motor in reverse and preventing acceleration
   // inputs.
-  actuator brake : Float
+  actuator brake : Float rate 1s
 
   // Debug actuators
-  actuator posDebug : Dist(Pos)
+  actuator posDebug : Dist(Pos) rate 1s
 
   // Tasks
   // We define periodic tasks, where the first argument to each task template
   // denotes the period of the respective tasks.
-  task speed = SpeedEstimate(500ms) importance 10
-  task distance_FC = SensorDistance(500ms) importance 0
-  task distance_SL = SensorDistance(500ms) importance 0
-  task distance_SR = SensorDistance(500ms) importance 0
-  task pos = PositionEstimate(1s) importance 40
-  task braking = BrakeEstimate(500ms) importance 10
+  task speed = SpeedEstimate(500ms) importance 1
+  task distance_FC = SensorDistance(500ms) importance 1
+  task distance_SL = SensorDistance(500ms) importance 1
+  task distance_SR = SensorDistance(500ms) importance 1
+  task pos = PositionEstimate(1s) importance 1
+  task braking = BrakeEstimate(500ms) importance 1
 
   // Speed estimation inputs
   speedLeft -> speed.lspeed
