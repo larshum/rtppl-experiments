@@ -8,7 +8,7 @@ path = sys.argv[1]
 if len(sys.argv) == 3:
     with open(sys.argv[2]) as f:
         x, y = f.read().strip().split(" ")
-    true_x, true_y = int(x), int(y)
+    true_x, true_y = float(x), float(y)
 else:
     true_x = None
     true_y = None
