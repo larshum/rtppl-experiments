@@ -124,4 +124,4 @@ echo "#####################"
 echo "# RESULT PROCESSING #"
 echo "#####################"
 
-echo "TODO"
+python3 scripts/print-autoconf-table.py > table.tex
