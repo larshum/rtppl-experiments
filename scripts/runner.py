@@ -175,7 +175,7 @@ if args.replay:
         print("Directory containing replayed data does not exist")
         exit(1)
     replay_messages(args.replay, path, nw["sensor_outs"].items(), args.slowdown, buffer_size)
-    time.sleep(1)
+    time.sleep(args.slowdown)
     for proc in procs:
         if proc.poll():
             proc.kill()

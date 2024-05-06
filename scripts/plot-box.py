@@ -5,52 +5,62 @@ import matplotlib.pyplot as plt
 import numpy as np
 import glob
 import math
+import sys
 
-import dist
+fig, axs = plt.subplots(nrows=1, ncols=2, layout="constrained")
 
-true_x = 2.6
-true_y = 5.72
+with open(sys.argv[1]) as f:
+    [x, y] = f.read().split(" ")
+    true_x, true_y = float(x), float(y)
+
+# Plot the accuracy for each particle count as a boxplot on the left-hand side
 
 pcs = [100, 1000, 10000, 100000]
 D = []
-for p in pcs:
+for i, _ in enumerate(pcs):
     data = []
-    for path in glob.glob(f"measurements/{p}-particles/*/posDebug-actuator"):
-        pos_dists = sorted(dist.read_dists(path, 3))
-        _, d = pos_dists[-1]
-        x, y, _ = dist.compute_expected(d)
-        eucd = math.sqrt((x-true_x)**2+(y-true_y)**2)
-        data.append(eucd)
+    if i == 3:
+        i = 4
+    file = f"measurements/particles-{i}/accuracy.txt"
+    with open(file) as f:
+        for line in f.readlines():
+            [_, _, err] = line.split(" ")
+            data.append(float(err))
     D.append(data)
 labels = ["$10^2$", "$10^3$", "$10^4$", "$10^5$"]
+print(D, labels)
 
-fig, axs = plt.subplots(nrows=1, ncols=2, layout="constrained")
 axs[0].boxplot(D, labels = labels)
 axs[0].set_xlabel("#particles")
 axs[0].set_ylabel("Error (m)")
 axs[0].set_yscale("log")
+
+# Plot the (worst-case) execution times for each particle count per task as a
+# bar plot.
+def find_task_wcet(i, task):
+    wcet = 0.0
+    for file in glob.glob(f"measurements/particles-{i}/*/{task}.collect"):
+        with open(file) as f:
+            wcet = max([wcet] + [float(x.strip())/1e9 for x in f.readlines()])
+    return wcet
 
 x = np.arange(len(pcs))
 barw = 0.2
 multiple = 0
 
 tasks = {
-    "speed": [],
     "pos": [],
     "braking": []
 }
-for p in pcs:
-    with open(f"measurements/{p}-particles/wcets.txt", "r") as f:
-        s, p, b = f.read().strip().split(" ")
-        tasks["speed"].append(float(s)/1e9)
-        tasks["pos"].append(float(p)/1e9)
-        tasks["braking"].append(float(b)/1e9)
+for i, _ in enumerate(pcs):
+    for k, v in tasks.items():
+        tasks[k].append(find_task_wcet(i, k))
 
 for task, wcets in tasks.items():
     offset = barw * multiple
     rects = axs[1].bar(x + offset, wcets, barw, label=task)
     multiple += 1
-axs[1].set_xticks(x + barw, labels)
+axs[1].set_xticks(x + barw / 2, labels)
 axs[1].set_xlabel("#particles")
 axs[1].set_ylabel("WCET (s)")
 axs[1].set_yscale("log")
