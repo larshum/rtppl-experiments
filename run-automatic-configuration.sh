@@ -85,7 +85,7 @@ do
       # Set the importance values of tasks in the configuration file.
       printf "importance\npos ${PPOS}\nbraking ${PBRAKING}\nspeed 0\ndistance_SL 0\ndistance_SR 0\ndistance_FC 0\n" | python3 scripts/set-property.py ${BUILD_PATH}
 
-      rtppl-configure --repetitions 3 --safety-margin 0.9 --path ${BUILD_PATH} --runner "${RUNNER}" ${CONFIG_FLAGS} > ${OUTDIR}/log.txt
+      rtppl-configure --repetitions 3 --safety-margin 0.85 --path ${BUILD_PATH} --runner "${RUNNER}" ${CONFIG_FLAGS} > ${OUTDIR}/log.txt
 
       # If the configuration failed, e.g., because the ratio between the
       # importance of the tasks is too large, we stop the experiment here.
