@@ -58,9 +58,8 @@ do
   for j in $(seq 0 1)
   do
     TASK=${TASKS[j]}
-    OUTDIR=measurements/${FAIRNESS}
 
-    mkdir -p ${OUTDIR}
+    mkdir -p measurements/${FAIRNESS}
 
     echo "Increasing the importance of the ${TASK} task"
 
@@ -80,12 +79,13 @@ do
         PBRAKING=$((2 * PBRAKING))
       fi
 
+      OUTDIR=measurements/${FAIRNESS}/${PPOS}-${PBRAKING}
+      mkdir -p ${OUTDIR}
+
       # Set the importance values of tasks in the configuration file.
       printf "importance\npos ${PPOS}\nbraking ${PBRAKING}\nspeed 0\ndistance_SL 0\ndistance_SR 0\ndistance_FC 0\n" | python3 scripts/set-property.py ${BUILD_PATH}
 
-      LOG_OUTPUT=${OUTDIR}/${PPOS}-${PBRAKING}-log.txt
-
-      rtppl-configure --repetitions 1 --safety-margin 0.01 --path ${BUILD_PATH} --runner "${RUNNER}" ${CONFIG_FLAGS} > ${LOG_OUTPUT}
+      rtppl-configure --repetitions 3 --safety-margin 0.9 --path ${BUILD_PATH} --runner "${RUNNER}" ${CONFIG_FLAGS} > ${OUTDIR}/log.txt
 
       # If the configuration failed, e.g., because the ratio between the
       # importance of the tasks is too large, we stop the experiment here.
@@ -97,7 +97,21 @@ do
       fi
 
       # Copy the resulting configuration file
-      cp ${BUILD_PATH}/system.json ${OUTDIR}/system-${PPOS}-${PBRAKING}.json
+      cp ${BUILD_PATH}/system.json ${OUTDIR}/system.json
+
+      # Repeatedly run the configured system to estimate the accuracy of the
+      # configured system
+      for k in $(seq 1 10)
+      do
+        # Run the configured system using the test data (distinct from the
+        # training data used to configure the system).
+        time sudo python3 scripts/runner.py -p ${BUILD_PATH} -m ${MAP_ID}.txt -r ${TEST_PATH} --record
+
+        # Compute the distance between the last estimation and the true
+        # position and store the distance along the x-axis, y-axis, and the
+        # Euclidean distance in the given file.
+        python3 scripts/print-expected.py ${BUILD_PATH}/posDebug-actuator ${TRUE_POS_PATH} >> ${OUTDIR}/accuracy.txt
+      done
 
       if [ "${j}" -eq "0" ]; then
         PPOS=$((2 * PPOS))
