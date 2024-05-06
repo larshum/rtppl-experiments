@@ -13,6 +13,11 @@ def read_last_line(file):
         return f.readlines()[-1]
 
 
+# We need to ensure that this is sufficiently large for our benchmark results,
+# or add a function which finds this value automatically by considering the
+# names of the output directories.
+maxratio = 1024
+
 pos = ("", "")
 braking = ("", "")
 iterations = ("", "")
@@ -20,10 +25,10 @@ column_headers = "Ratio"
 column_format = "l"
 for i, fairness in enumerate(["particle", "execution-time"]):
     fdir = f"measurements/{fairness}"
-    # Loop through all ratios from the maximum imbalance toward pos (1024:1) to
-    # the maximum imbalance toward the braking task (1:1024).
-    a, b = 1024, 1
-    while a > 1 and b <= 1024:
+    # Loop through all ratios from the maximum imbalance toward pos (maxratio:1) to
+    # the maximum imbalance toward the braking task (1:maxratio).
+    a, b = maxratio, 1
+    while a > 1 and b <= maxratio:
         try:
             particles = read_particles(f"{fdir}/{a}-{b}/system.json")
             pos[i] = f"{pos[i]} & {particles['pos']}"
