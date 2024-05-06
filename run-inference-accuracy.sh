@@ -94,8 +94,7 @@ echo "#####################"
 echo "# RESULT PROCESSING #"
 echo "#####################"
 
-#TODO: commit this file....
 # Two plots side-by-side: on the left-hand side, a box plot showing how the
 # error decreases as we increase the number of particles in the pos task. On
 # the right-hand side plot, we show the execution times.
-#python3 scripts/plot-box.py "${TEST_PATH}/true.txt"
+python3 scripts/plot-box.py "${TEST_PATH}/true.txt"
