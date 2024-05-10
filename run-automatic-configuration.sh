@@ -44,7 +44,7 @@ echo "###########################"
 
 # 1. Set the task to core mapping such that the tasks that perform inference
 #    are on the same core, and the other tasks are on another core.
-printf "core\npos 1\nbraking 1\nspeed 2\ndistance_SL 2\ndistance_SR 2\ndistance_FC 2\n" | python3 scripts/set-property.py ${BUILD_PATH}
+printf "core\npos 1\nbraking 2\nspeed 3\ndistance_SL 3\ndistance_SR 3\ndistance_FC 3\n" | python3 scripts/set-property.py ${BUILD_PATH}
 
 CONFIGURATIONS=("particle" "execution-time")
 CONFIGURATION_FLAGS=("--particle-fairness" "--execution-time-fairness")
