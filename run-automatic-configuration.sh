@@ -48,7 +48,7 @@ printf "core\npos 1\nbraking 1\nspeed 2\ndistance_SL 2\ndistance_SR 2\ndistance_
 
 CONFIGURATIONS=("particle" "execution-time")
 CONFIGURATION_FLAGS=("--particle-fairness" "--execution-time-fairness")
-TASKS=("pos" "budget")
+TASKS=("pos" "braking")
 RUNNER="sudo python3 scripts/runner.py -p ${BUILD_PATH} -m ${MAP_ID}.txt -r ${TRAIN_PATH}"
 for i in $(seq 0 1)
 do
