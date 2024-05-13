@@ -50,6 +50,7 @@ CONFIGURATIONS=("particle" "execution-time")
 CONFIGURATION_FLAGS=("--particle-fairness" "--execution-time-fairness")
 TASKS=("pos" "braking")
 RUNNER="sudo python3 scripts/runner.py -p ${BUILD_PATH} -m ${MAP_ID}.txt -r ${TRAIN_PATH}"
+REPETITIONS=3
 for i in $(seq 0 1)
 do
   FAIRNESS=${CONFIGURATIONS[i]}
@@ -85,7 +86,7 @@ do
       # Set the importance values of tasks in the configuration file.
       printf "importance\npos ${PPOS}\nbraking ${PBRAKING}\nspeed 0\ndistance_SL 0\ndistance_SR 0\ndistance_FC 0\n" | python3 scripts/set-property.py ${BUILD_PATH}
 
-      rtppl-configure --repetitions 3 --safety-margin 0.85 --path ${BUILD_PATH} --runner "${RUNNER}" ${CONFIG_FLAGS} > ${OUTDIR}/log.txt
+      rtppl-configure --repetitions ${REPETITIONS} --safety-margin 0.85 --path ${BUILD_PATH} --runner "${RUNNER}" ${CONFIG_FLAGS} > ${OUTDIR}/log.txt
 
       # If the configuration failed, e.g., because the ratio between the
       # importance of the tasks is too large, we stop the experiment here.
@@ -99,18 +100,18 @@ do
       # Copy the resulting configuration file
       cp ${BUILD_PATH}/system.json ${OUTDIR}/system.json
 
-      # Repeatedly run the configured system to estimate the accuracy of the
-      # configured system
-      for k in $(seq 1 10)
+      # Run the configured system three times to estimate the WCETs of the pos
+      # and braking tasks
+      for k in $(seq 1 ${REPETITIONS})
       do
-        # Run the configured system using the test data (distinct from the
-        # training data used to configure the system).
-        time sudo python3 scripts/runner.py -p ${BUILD_PATH} -m ${MAP_ID}.txt -r ${TEST_PATH} --record
+        # Run the configured system using test data (distinct from the training
+        # data we use to configure the system).
+        sudo python3 scripts/runner.py -p ${BUILD_PATH} -m ${MAP_ID}.txt -r ${TEST_PATH} -- record >/dev/null 2>/dev/null
 
-        # Compute the distance between the last estimation and the true
-        # position and store the distance along the x-axis, y-axis, and the
-        # Euclidean distance in the given file.
-        python3 scripts/print-expected.py ${BUILD_PATH}/posDebug-actuator ${TRUE_POS_PATH} >> ${OUTDIR}/accuracy.txt
+        # Extract the WCETs from the .collect files of the respective tasks and
+        # store this in a file.
+        cat ${BUILD_PATH}/pos.collect | sort -n | tail -n 1 >> ${OUTDIR}/pos.txt
+        cat ${BUILD_PATH}/braking.collect | sort -n | tail -n 1 >> ${OUTDIR}/braking.txt
       done
 
       if [ "${j}" -eq "0" ]; then
@@ -124,4 +125,4 @@ echo "#####################"
 echo "# RESULT PROCESSING #"
 echo "#####################"
 
-python3 scripts/print-autoconf-table.py > table.tex
+python3 scripts/plot-autoconfig.py
