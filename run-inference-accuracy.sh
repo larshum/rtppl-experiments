@@ -42,7 +42,7 @@ echo "###############################"
 # This factor may need to be adjusted based on the computer on which we run the
 # simulation.
 PC=(100 1000 10000 100000)
-SLOWDOWN=(1 1 1 8)
+SLOWDOWN=(1 1 1 10)
 
 # 1. Set the task core mapping, allocating the tasks that perform inference
 #    (pos and braking) to separate cores.
@@ -65,7 +65,7 @@ do
   mkdir -p measurements/particles-${i}
 
   # Repeat the simulation multiple times per particle configuration.
-  for j in $(seq 1 10)
+  for j in $(seq 1 100)
   do
     echo "Iteration ${j} (${PC[i]} particles)"
 
@@ -75,18 +75,13 @@ do
     # Run the simulation on the test data using the given configuration
     time sudo python3 scripts/runner.py -p ${BUILD_PATH} -m ${MAP_ID}.txt -r ${TEST_PATH} --record --slowdown ${SLOWDOWN[i]}
 
+    python3 scripts/print-expected.py ${BUILD_PATH}/posDebug-actuator ${TRUE_POS_PATH} >> measurements/particles-${i}/accuracy.txt
+
     # Copy all files in the build directory to the output folder. We want to
     # keep most files for sanity checking, but the executables are not
     # important so we remove them (they also take up a lot of space).
     cp ${BUILD_PATH}/* ${OUT_DIR}
     find ${OUT_DIR} -type f -executable | xargs rm
-  done
-
-  for j in $(seq 1 10)
-  do
-    OUT_DIR=measurements/particles-${i}/${j}
-
-    python3 scripts/print-expected.py ${OUT_DIR}/posDebug-actuator ${TRUE_POS_PATH} >> measurements/particles-${i}/accuracy.txt
   done
 done
 
