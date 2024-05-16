@@ -106,7 +106,7 @@ do
       do
         # Run the configured system using test data (distinct from the training
         # data we use to configure the system).
-        sudo python3 scripts/runner.py -p ${BUILD_PATH} -m ${MAP_ID}.txt -r ${TEST_PATH} -- record >/dev/null 2>/dev/null
+        sudo python3 scripts/runner.py -p ${BUILD_PATH} -m ${MAP_ID}.txt -r ${TEST_PATH} --record >> ${OUTDIR}/run-log.txt 2>&1
 
         # Extract the WCETs from the .collect files of the respective tasks and
         # store this in a file.
