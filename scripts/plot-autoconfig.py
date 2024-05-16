@@ -106,7 +106,7 @@ for i, fairness in enumerate(fairness_kinds):
     axs.plot(wcet_x[i], wcet_y[i], color=c, marker=value_fmt[i][1], label=l2, alpha=0.5)
 
 axs.set_xlabel("Importance Ratio (pos / braking)")
-axs.set_ylabel("Ratio")
+axs.set_ylabel("Ratio of particles or WCET")
 axs.set_xscale("log", base=2)
 axs.set_yscale("log", base=2)
 axs.set_xticks([2**i for i in range(-10, 12, 2)])
