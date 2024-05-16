@@ -11,7 +11,7 @@ import sys
 import system
 
 def contains_all_files(d):
-    outputs = ["system.json", "log.txt", "accuracy.txt"]
+    outputs = ["system.json", "log.txt", "pos.txt", "braking.txt"]
     return all([os.path.isfile(f"{d}/{f}") for f in outputs])
 
 def cmp_ratios(x, y):
@@ -53,7 +53,10 @@ for i, fairness in enumerate(["particle", "execution-time"]):
             ratios.add((int(a), int(b)))
 ratios = sorted(list(ratios), key=cmp_to_key(cmp_ratios))
 
+plt.rcParams.update({"font.size": 14})
 fig, axs = plt.subplots(nrows=1, ncols=1, layout="constrained")
+axs.grid(which="both")
+axs.set_axisbelow(True)
 
 fairness_kinds = ["execution-time", "particle"]
 particle_x = [[], []]
@@ -102,9 +105,11 @@ for i, fairness in enumerate(fairness_kinds):
     axs.plot(particle_x[i], particle_y[i], color=c, marker=value_fmt[i][0], label=l1, alpha=0.5)
     axs.plot(wcet_x[i], wcet_y[i], color=c, marker=value_fmt[i][1], label=l2, alpha=0.5)
 
-axs.set_xlabel("Importance Ratio")
+axs.set_xlabel("Importance Ratio (pos / braking)")
 axs.set_ylabel("Ratio")
 axs.set_xscale("log", base=2)
 axs.set_yscale("log", base=2)
+axs.set_xticks([2**i for i in range(-10, 12, 2)])
+axs.set_yticks([2**i for i in range(-10, 12, 2)])
 axs.legend(loc="upper left")
 fig.savefig("auto-config.pdf",bbox_inches="tight")
