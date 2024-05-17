@@ -84,6 +84,8 @@ ax2.set_xlabel("#particles")
 ax2.set_ylabel("WCET (s)")
 ax2.set_yscale("log")
 ax2.legend(loc="upper left")
+ax2.yaxis.set_label_position("right")
+ax2.yaxis.tick_right()
 
 fig.set_figwidth(6.4)
 fig.set_figheight(3.2)
