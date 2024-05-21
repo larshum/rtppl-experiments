@@ -112,4 +112,6 @@ axs.set_yscale("log", base=2)
 axs.set_xticks([2**i for i in range(-10, 12, 2)])
 axs.set_yticks([2**i for i in range(-10, 12, 2)])
 axs.legend(loc="upper left")
+
+fig.set_size_inches(8, 4)
 fig.savefig("auto-config.pdf",bbox_inches="tight")
