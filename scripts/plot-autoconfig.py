@@ -88,8 +88,8 @@ for a, b in ratios:
             pass
 
 labels = [
-  ["EF_P", "EF_WCET"],
-  ["PF_P", "PF_WCET"]
+  ["EF_P", "EF_W"],
+  ["PF_P", "PF_W"]
 ]
 fairness_color = ["orange", "blue"]
 value_fmt = [
