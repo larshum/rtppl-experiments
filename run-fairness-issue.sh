@@ -1,4 +1,4 @@
-BUILD_PATH=positioning
+BUILD_PATH=old-pos
 MAP_ID=maps/corridor
 TRAIN_PATH=measurements/train_data
 TEST_PATH=measurements/test_data
