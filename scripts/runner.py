@@ -85,7 +85,7 @@ path = args.path
 
 syspath = f"{path}/system.json"
 nw = system.read_system(syspath)
-buffer_size = nw["compileopts"]["buffer-size"]
+buffer_size = nw["compileopts"]["bufferSize"]
 
 debug_files = []
 

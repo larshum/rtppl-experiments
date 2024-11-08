@@ -4,7 +4,9 @@ def read_system(file):
     with open(file, "r") as f:
         data = json.load(f)
 
-    tasks = sorted(data["tasks"], key=lambda x: x["period"])
+    tasks = sorted(data["tasks"], key=lambda x: x["minrate"])
+    sensors = [x["id"] for x in data["sensors"]]
+    actuators = [x["id"] for x in data["actuators"]]
 
     # We only run the relay to deliver data between tasks
     relays = {}
@@ -13,11 +15,11 @@ def read_system(file):
     for c in data["connections"]:
         src = c["from"]
         dst = c["to"]
-        if dst in data["actuators"]:
+        if dst in actuators:
             if not dst in actuator_ins:
                 actuator_ins[dst] = []
             actuator_ins[dst].append(src)
-        elif src in data["sensors"]:
+        elif src in sensors:
             if not src in sensor_outs:
                 sensor_outs[src] = []
             sensor_outs[src].append(dst)

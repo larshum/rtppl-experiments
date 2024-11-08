@@ -78,8 +78,8 @@ def probtime_open(f, buffer_size):
         x.close()
 
 def main():
-    with probtime_open("test") as w:
-        with probtime_open("test") as r:
+    with probtime_open("test", 2**12) as w:
+        with probtime_open("test", 2**12) as r:
             for i in range(1000):
                 b = bytearray(1024)
                 for j in range(1024):

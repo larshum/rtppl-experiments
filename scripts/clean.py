@@ -32,12 +32,6 @@ def keep_file(clear_all_temp, nw, f):
     if f in bins or f == sysfile:
         return True
 
-    # If it is a task configuration file, we keep it to avoid having
-    # re-configuring the number of particles to use in the task.
-    configs = set([f"{t['id']}.config" for t in nw["tasks"]])
-    if f in configs:
-        return True
-
     # Otherwise, we don't need to keep it
     return False
 
