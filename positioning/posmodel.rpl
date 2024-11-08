@@ -215,7 +215,7 @@ template SpeedEstimate(period : Int) {
     read lspeed to lObs
     read rspeed to rObs
     printLengths([|lObs|, |rObs|])
-    obs = sort(cmpFloatTimestamp, concat(lObs, rObs))
+    var obs = sort(cmpFloatTimestamp, concat(lObs, rObs))
     if gtInt(|obs|, 0) {
       var est = {mu = 0.0, sigma = 0.001}
       if carIsStationary(obs) update est {
@@ -317,9 +317,9 @@ model initialPositionModel() : Pos {
 def estimateDistance(ofs : Offset, coneAngle : Float, p : Pos,
                      inBounds : Pos -> Bool) : Float {
   var eps = 0.1
-  p1 = positionAtOffset(p, ofs)
-  p2 = p1
-  p3 = p1
+  var p1 = positionAtOffset(p, ofs)
+  var p2 = p1
+  var p3 = p1
   p2.direction = p1.direction + coneAngle
   p3.direction = p1.direction - coneAngle
   var acc = {d = 0.0, p1 = p1, p2 = p2, p3 = p3}
@@ -632,12 +632,12 @@ system {
   // Tasks
   // We define periodic tasks, where the first argument to each task template
   // denotes the period of the respective tasks.
-  task speed = SpeedEstimate(500ms) importance 1
-  task distance_FC = SensorDistance(500ms) importance 1
-  task distance_SL = SensorDistance(500ms) importance 1
-  task distance_SR = SensorDistance(500ms) importance 1
-  task pos = PositionEstimate(1s) importance 1
-  task braking = BrakeEstimate(500ms) importance 1
+  task speed = SpeedEstimate(500ms) with {importance = 1, minDelay = 500ms, maxDelay = 500ms}
+  task distance_FC = SensorDistance(500ms) with {importance = 1, minDelay = 500ms, maxDelay = 500ms}
+  task distance_SL = SensorDistance(500ms) with {importance = 1, minDelay = 500ms, maxDelay = 500ms}
+  task distance_SR = SensorDistance(500ms) with {importance = 1, minDelay = 500ms, maxDelay = 500ms}
+  task pos = PositionEstimate(1s) with {importance = 4, minDelay = 1s, maxDelay = 1s}
+  task braking = BrakeEstimate(500ms) with {importance = 2, minDelay = 500ms, maxDelay = 500ms}
 
   // Speed estimation inputs
   speedLeft -> speed.lspeed
