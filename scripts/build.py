@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import sys
@@ -20,3 +21,24 @@ elif len(rtppl_files) == 1:
 else:
     print("Directory contains multiple RTPPL files, expected one")
     exit(1)
+
+# After compiling the ProbTime file, we set the minrate and maxrate parameters
+# of each task in the configuration file. As all tasks of the system are
+# periodic, we have that minrate = maxrate.
+periods = {
+    'speed' : 500 * 10**6,
+    'distance_FC' : 500 * 10**6,
+    'distance_SL' : 500 * 10**6,
+    'distance_SR' : 500 * 10**6,
+    'pos' : 10**9,
+    'braking' : 500 * 10**6
+}
+with open("system.json", "r+") as f:
+    data = json.load(f)
+    for t in data['tasks']:
+        p = periods[t['id']]
+        t['minrate'] = p
+        t['maxrate'] = p
+    f.seek(0)
+    json.dump(data, f)
+    f.truncate()

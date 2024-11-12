@@ -632,12 +632,12 @@ system {
   // Tasks
   // We define periodic tasks, where the first argument to each task template
   // denotes the period of the respective tasks.
-  task speed = SpeedEstimate(500ms) with {importance = 1, minDelay = 500ms, maxDelay = 500ms}
-  task distance_FC = SensorDistance(500ms) with {importance = 1, minDelay = 500ms, maxDelay = 500ms}
-  task distance_SL = SensorDistance(500ms) with {importance = 1, minDelay = 500ms, maxDelay = 500ms}
-  task distance_SR = SensorDistance(500ms) with {importance = 1, minDelay = 500ms, maxDelay = 500ms}
-  task pos = PositionEstimate(1s) with {importance = 4, minDelay = 1s, maxDelay = 1s}
-  task braking = BrakeEstimate(500ms) with {importance = 2, minDelay = 500ms, maxDelay = 500ms}
+  task speed = SpeedEstimate(500ms)
+  task distance_FC = SensorDistance(500ms)
+  task distance_SL = SensorDistance(500ms)
+  task distance_SR = SensorDistance(500ms)
+  task pos = PositionEstimate(1s)
+  task braking = BrakeEstimate(500ms)
 
   // Speed estimation inputs
   speedLeft -> speed.lspeed
