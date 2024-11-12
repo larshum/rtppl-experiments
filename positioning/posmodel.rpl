@@ -459,7 +459,7 @@ template PositionEstimate(period : Int) {
   input steeringAngle : Float
   output posEst : Dist(Pos)
   var m : RoomMap = readRoomMap()
-  infer initialPositionModel() to d particles 100
+  infer initialPositionModel() to d particles 1
   var acc = {
     d = tsv(0, d),
     speed = tsv(0, {mu = maxSpeed / 2.0, sigma = maxSpeed / 2.0})
@@ -583,7 +583,7 @@ template BrakeEstimate(period : Int) {
   input steeringAngle : Float
   output brake : Float
   var m : RoomMap = readRoomMap()
-  infer initialPositionModel() to d particles 100
+  infer initialPositionModel() to d particles 1
   var acc = {
     speed = tsv(0, {mu = maxSpeed / 2.0, sigma = maxSpeed / 2.0}),
     pos = tsv(0, d)
