@@ -231,7 +231,6 @@ template SpeedEstimate(period : Int) {
   input lspeed : Float
   input rspeed : Float
   output speedEst : Dist(Float)
-  infer initSpeedModel() to initSpeed particles 100
   while true {
     delay period
     read lspeed to lObs
