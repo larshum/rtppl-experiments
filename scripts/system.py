@@ -4,7 +4,7 @@ def read_system(file):
     with open(file, "r") as f:
         data = json.load(f)
 
-    tasks = sorted(data["tasks"], key=lambda x: x["minrate"])
+    tasks = sorted(data["tasks"], key=lambda x: x["minarrival"])
     sensors = [x["id"] for x in data["sensors"]]
     actuators = [x["id"] for x in data["actuators"]]
 
