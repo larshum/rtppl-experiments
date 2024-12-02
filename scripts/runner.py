@@ -115,7 +115,9 @@ def handler(sig, frame):
             with open(f"{t}.collect") as f:
                 data = f.read().split("\n")
                 overran = int(data[-1])
-                if overran == 1:
+                # Skip printing the overrun message for tasks that are not
+                # assigned a budget.
+                if task["budget"] > 0 and overran == 1:
                     print(f"Task {t} overran its budget")
         except:
             print(f"Did not find collected data for task {t}")
