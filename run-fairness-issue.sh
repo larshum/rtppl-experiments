@@ -1,3 +1,9 @@
+# Run a quick experiment to illustrate how execution time fairness is
+# problematic when we have a task that runs inference very quickly, and other
+# slower tasks depend on it.
+#
+# We run this using pre-recorded data on the Raspberry Pi.
+
 BUILD_PATH=old-pos
 MAP_ID=maps/corridor
 TRAIN_PATH=measurements/train_data
@@ -69,9 +75,3 @@ do
 
   cp ${BUILD_PATH}/system.json ${OUTDIR}/system.json
 done
-
-echo "#####################"
-echo "# RESULT PROCESSING #"
-echo "#####################"
-
-python3 scripts/plot-autoconfig.py

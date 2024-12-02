@@ -1,3 +1,12 @@
+# Evaluates the positioning inference accuracy when varying the number of
+# particles used in the positioning task. Runs in a simulated environment using
+# pre-recorded data.
+#
+# This evaluation should run on a fast computer, as we want to be able to run
+# as many particles as possible. Remember to update the slowdown factors when
+# using a new machine (we don't want to waste time by using overly conservative
+# values here).
+
 BUILD_PATH=positioning
 MAP_ID=maps/corridor
 TRAIN_PATH=measurements/train_data
@@ -39,12 +48,13 @@ echo "###############################"
 # particles used in the positioning task. The goal is to show that more
 # particles lead to a better accuracy but that it takes longer. Also, it shows
 # the dependencies among tasks.
-
+#
 # We specify the number of particles to use in the positioning task (all other
 # tasks performing inference run 1000 particles). When running many particles,
 # we need to use a slowdown factor to ensure we have time to run the inference.
-# This factor may need to be adjusted based on the computer on which we run the
-# simulation.
+#
+# NOTE: The slowdown factor may need to be adjusted based on the computer on
+# which we run the simulation.
 PC=(100 1000 10000 100000)
 SLOWDOWN=(1 1 1 10)
 

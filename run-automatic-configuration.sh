@@ -1,3 +1,14 @@
+# Runs the automatic configuration experiments, where the ratio of importance
+# between the positioning and the braking tasks is varied. The purpose of this
+# evaluation is to show the difference between the execution time fairness and
+# the particle fairness approaches.
+#
+# We run this on the Raspberry Pi with pre-recorded data. A surprising benefit
+# of using the RPi for this benchmark is that configuration actually runs
+# faster than on a desktop machine, because a slower CPU decreases the size of
+# the search space we need to consider (while each configuration step runs in a
+# fixed amount of time for given pre-recorded data).
+
 BUILD_PATH=positioning
 MAP_ID=maps/corridor
 TRAIN_PATH=measurements/train_data
