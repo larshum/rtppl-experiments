@@ -26,6 +26,10 @@ if [ -f ${BUILD_PATH}/system.json ]; then
   python3 scripts/clean.py -p ${BUILD_PATH} -a
 fi
 python3 scripts/build.py ${BUILD_PATH}
+if [ $? -ne 0]; then
+  echo "Build failed"
+  exit 1
+fi
 
 echo "###########################"
 echo "# AUTOMATIC CONFIGURATION #"
